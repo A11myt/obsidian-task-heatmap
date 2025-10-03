@@ -1,0 +1,299 @@
+/**
+ * Main Task Heatmap Renderer - Orchestrates all rendering components
+ */
+
+import HeatmapCalendarPlugin from '../main';
+import { HeatmapSettings } from '../settings/settings';
+import { TaskDayData, DateRange } from '../types';
+import { applyStyles, createElement } from '../utils/domUtils';
+import { createLogger } from '../utils/loggerUtils';
+import { CSS_CLASSES, CELLS_PER_ROW, CELL_GAP } from '../constants';
+
+import { HeatmapDataCollector } from './core/HeatmapDataCollector';
+import { HeatmapTitleRenderer } from './components/HeatmapTitleRenderer';
+import { WeekdayLabelsRenderer } from './components/WeekdayLabelsRenderer';
+import { HeatmapCellRenderer } from './components/HeatmapCellRenderer';
+import { StatisticsPanelRenderer } from './components/StatisticsPanelRenderer';
+
+const logger = createLogger('TaskHeatmapRenderer');
+
+export class TaskHeatmapRenderer {
+	private plugin: HeatmapCalendarPlugin;
+	private settings: HeatmapSettings;
+	
+	// Component renderers
+	private dataCollector: HeatmapDataCollector;
+	private titleRenderer: HeatmapTitleRenderer;
+	private weekdayRenderer: WeekdayLabelsRenderer;
+	private cellRenderer: HeatmapCellRenderer;
+	private panelRenderer: StatisticsPanelRenderer;
+
+	constructor(plugin: HeatmapCalendarPlugin, settings: HeatmapSettings) {
+		this.plugin = plugin;
+		this.settings = settings;
+		
+		// Initialize component renderers
+		this.dataCollector = new HeatmapDataCollector(plugin, settings.notesFolder);
+		this.titleRenderer = new HeatmapTitleRenderer();
+		this.weekdayRenderer = new WeekdayLabelsRenderer(settings.cellSize);
+		this.panelRenderer = new StatisticsPanelRenderer(settings);
+		this.cellRenderer = new HeatmapCellRenderer(
+			settings,
+			(cellWrapper, day) => this.panelRenderer.togglePanel(cellWrapper, day)
+		);
+	}
+
+	/**
+	 * Main render method - orchestrates the entire heatmap rendering
+	 */
+	async render(container: HTMLElement): Promise<void> {
+		logger.info('Starting heatmap render');
+
+		try {
+			this.initializeContainer(container);
+			this.titleRenderer.render(container);
+
+			const taskData = await this.dataCollector.collectTaskData();
+			const dateRange = this.calculateDateRange();
+
+			await this.renderHeatmap(container, taskData, dateRange);
+			
+			this.renderLegend(container, taskData);
+			
+			logger.success('Heatmap rendered successfully');
+		} catch (error) {
+			logger.error('Failed to render heatmap', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Initialize container
+	 */
+	private initializeContainer(container: HTMLElement): void {
+		container.empty();
+		container.addClass(CSS_CLASSES.HEATMAP_VIEW);
+	}
+
+	/**
+	 * Render the main heatmap
+	 */
+	private async renderHeatmap(
+		container: HTMLElement,
+		taskData: Map<string, TaskDayData>,
+		dateRange: DateRange
+	): Promise<void> {
+		const heatmapContainer = createElement(container, 'div', {
+			className: CSS_CLASSES.HEATMAP_CONTAINER
+		});
+
+		const mainContainer = this.createMainContainer(heatmapContainer);
+		
+		this.weekdayRenderer.render(mainContainer);
+		
+		const gridContainer = this.createGridContainer(mainContainer);
+		this.renderGrid(gridContainer, taskData, dateRange);
+	}
+
+	/**
+	 * Create main container for heatmap
+	 */
+	private createMainContainer(parent: HTMLElement): HTMLElement {
+		return createElement(parent, 'div', {
+			styles: {
+				display: 'flex',
+				gap: '8px',
+				alignItems: 'flex-start'
+			}
+		});
+	}
+
+	/**
+	 * Create grid container
+	 */
+	private createGridContainer(parent: HTMLElement): HTMLElement {
+		return createElement(parent, 'div', {
+			styles: {
+				display: 'flex',
+				gap: `${CELL_GAP}px`,
+				overflowX: 'auto',
+				justifyContent: 'center',
+				flexWrap: 'wrap',
+				maxWidth: '100%'
+			}
+		});
+	}
+
+	/**
+	 * Render the grid of cells
+	 */
+	private renderGrid(
+		container: HTMLElement,
+		taskData: Map<string, TaskDayData>,
+		dateRange: DateRange
+	): void {
+		const currentDate = new Date(dateRange.startDate);
+		let dayCount = 0;
+		let currentRow: HTMLElement | null = null;
+
+		while (currentDate <= dateRange.endDate) {
+			if (dayCount % CELLS_PER_ROW === 0) {
+				currentRow = this.createGridRow(container);
+			}
+
+			const dayData = this.getOrCreateDayData(currentDate, taskData);
+			this.cellRenderer.render(currentRow!, dayData);
+
+			currentDate.setDate(currentDate.getDate() + 1);
+			dayCount++;
+		}
+	}
+
+	/**
+	 * Create a grid row
+	 */
+	private createGridRow(container: HTMLElement): HTMLElement {
+		return createElement(container, 'div', {
+			styles: {
+				display: 'flex',
+				gap: `${CELL_GAP}px`,
+				marginBottom: `${CELL_GAP}px`,
+				justifyContent: 'center'
+			}
+		});
+	}
+
+	/**
+	 * Get or create day data for a date
+	 */
+	private getOrCreateDayData(
+		currentDate: Date,
+		taskData: Map<string, TaskDayData>
+	): TaskDayData {
+		const dateStr = currentDate.toISOString().split('T')[0];
+		const existing = taskData.get(dateStr);
+
+		if (existing) {
+			return existing;
+		}
+
+		return {
+			date: new Date(currentDate),
+			dateStr,
+			completedTasks: 0,
+			totalTasks: 0,
+			dayOfWeek: (currentDate.getDay() + 6) % 7,
+			hasNote: false,
+			taskDetails: []
+		};
+	}
+
+	/**
+	 * Calculate date range for display
+	 */
+	calculateDateRange(): DateRange {
+		const today = new Date();
+		const startDate = new Date(today);
+		let endDate = new Date(today);
+
+		if (this.settings.enableYearSelector && !this.settings.showAllYears) {
+			return this.getYearRange(today);
+		} else {
+			startDate.setDate(startDate.getDate() - 365);
+			return { startDate, endDate };
+		}
+	}
+
+	/**
+	 * Get date range for specific year
+	 */
+	private getYearRange(today: Date): DateRange {
+		const startDate = new Date(this.settings.selectedYear, 0, 1);
+		const yearEnd = new Date(this.settings.selectedYear, 11, 31);
+		const currentYear = today.getFullYear();
+
+		let endDate: Date;
+		if (this.settings.selectedYear === currentYear) {
+			endDate = yearEnd;
+		} else if (yearEnd > today) {
+			endDate = today;
+		} else {
+			endDate = yearEnd;
+		}
+
+		return { startDate, endDate };
+	}
+
+	/**
+	 * Render legend (if enabled)
+	 */
+	private renderLegend(container: HTMLElement, taskData: Map<string, TaskDayData>): void {
+		if (!this.settings.showLegend && !this.settings.showTotal) {
+			return;
+		}
+
+		const legendContainer = createElement(container, 'div', {
+			styles: {
+				display: 'flex',
+				alignItems: 'center',
+				gap: '5px',
+				fontSize: '11px',
+				marginTop: '8px'
+			}
+		});
+
+		if (this.settings.showLegend) {
+			this.renderLegendScale(legendContainer);
+		}
+
+		if (this.settings.showTotal) {
+			this.renderTotalStats(legendContainer, taskData);
+		}
+	}
+
+	/**
+	 * Render legend scale
+	 */
+	private renderLegendScale(container: HTMLElement): void {
+		createElement(container, 'span', { text: 'Less' });
+
+		const colors = this.getColorScheme();
+		[this.settings.emptyColor, ...colors.slice(1)].forEach(color => {
+			createElement(container, 'div', {
+				styles: {
+					width: `${this.settings.cellSize}px`,
+					height: `${this.settings.cellSize}px`,
+					backgroundColor: color,
+					borderRadius: '2px'
+				}
+			});
+		});
+
+		createElement(container, 'span', { text: 'More' });
+	}
+
+	/**
+	 * Render total statistics
+	 */
+	private renderTotalStats(container: HTMLElement, taskData: Map<string, TaskDayData>): void {
+		const totalCompleted = Array.from(taskData.values())
+			.reduce((sum, day) => sum + day.completedTasks, 0);
+		const totalTasks = Array.from(taskData.values())
+			.reduce((sum, day) => sum + day.totalTasks, 0);
+
+		createElement(container, 'span', {
+			text: `Total: ${totalCompleted}/${totalTasks} tasks completed`,
+			styles: { marginLeft: '10px' }
+		});
+	}
+
+	/**
+	 * Get color scheme
+	 */
+	private getColorScheme(): string[] {
+		const { COLOR_SCHEMES } = require('../settings/settings');
+		return this.settings.colorScheme === 'custom'
+			? this.settings.customColors
+			: COLOR_SCHEMES[this.settings.colorScheme];
+	}
+}

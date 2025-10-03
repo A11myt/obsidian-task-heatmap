@@ -1,0 +1,10 @@
+{
+  "id": "daily-notes-heatmap",
+  "name": "Daily Notes Heatmap",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "A GitHub-style heatmap calendar for tracking daily notes",
+  "author": "A11myt",
+  "authorUrl": "https://github.com/A11myt",
+  "isDesktopOnly": false
+}
