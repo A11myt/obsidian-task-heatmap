@@ -16,6 +16,15 @@ export interface HeatmapSettings {
 	showLegend: boolean;
 	showTotal: boolean;
 	dateFormat: string;
+	// Dynamic naming and templating
+	dailyNoteFormat: string;
+	templateFile: string;
+	useTemplate: boolean;
+	// Auto-refresh settings
+	autoRefresh: boolean;
+	refreshInterval: number; // in seconds
+	showRefreshNotification: boolean;
+	smartRefresh: boolean; // Only refresh on actual task changes
 }
 
 export const COLOR_SCHEMES = {
@@ -41,5 +50,14 @@ export const DEFAULT_SETTINGS: HeatmapSettings = {
 	cellSize: 11,
 	showLegend: true,
 	showTotal: true,
-	dateFormat: 'de-DE'
+	dateFormat: 'de-DE',
+	// Dynamic naming and templating defaults
+	dailyNoteFormat: 'Notes/YYYY/MM/YYYY-MM-DD-dddd',
+	templateFile: 'Templates/Daily.md',
+	useTemplate: true,
+	// Auto-refresh defaults
+	autoRefresh: true,
+	refreshInterval: 3, // seconds
+	showRefreshNotification: false,
+	smartRefresh: true // Only refresh on actual task changes
 };

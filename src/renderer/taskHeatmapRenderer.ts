@@ -1,5 +1,13 @@
 import { HeatmapSettings, COLOR_SCHEMES } from '../settings/settings';
 import HeatmapCalendarPlugin from '../main';
+import { CSS_CLASSES } from '../constants';
+import { 
+	formatDynamicPath, 
+	processTemplate, 
+	getDefaultTemplate, 
+	sanitizePathPattern,
+	getDirectoryPath 
+} from '../utils/dynamicNamingUtils';
 
 /**
  * Data structure representing a single day's task information
@@ -33,10 +41,15 @@ interface TaskDetail {
 export class TaskHeatmapRenderer {
 	plugin: HeatmapCalendarPlugin;
 	settings: HeatmapSettings;
+	private dataCache: Map<string, TaskDayData> | null = null;
+	private lastCacheTime: number = 0;
 
 	constructor(plugin: HeatmapCalendarPlugin, settings: HeatmapSettings) {
 		this.plugin = plugin;
 		this.settings = settings;
+		
+		// Register this renderer for cache invalidation
+		this.plugin.registerRenderer(this);
 	}
 
 	// ============================================================
@@ -54,7 +67,7 @@ export class TaskHeatmapRenderer {
 		this.renderTitle(container);
 
 		// Collect task data from all notes
-		const taskData = await this.collectTaskData();
+		const taskData = await this.collectTaskData(true); // Force refresh for render
 
 		// Calculate date range
 		const { startDate, endDate } = this.calculateDateRange();
@@ -105,7 +118,15 @@ export class TaskHeatmapRenderer {
 	// DATA COLLECTION & CALCULATION
 	// ============================================================
 
-	async collectTaskData(): Promise<Map<string, TaskDayData>> {
+	async collectTaskData(forceRefresh: boolean = false): Promise<Map<string, TaskDayData>> {
+		// Use cache if available and not forced to refresh
+		const now = Date.now();
+		if (!forceRefresh && this.dataCache && (now - this.lastCacheTime < 2000)) {
+			console.log('📋 Using cached task data');
+			return this.dataCache;
+		}
+
+		console.log('🔄 Collecting fresh task data...');
 		const taskData = new Map<string, TaskDayData>();
 		const dateRegex = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/;
 		const monthMap: { [key: string]: number } = {
@@ -146,7 +167,29 @@ export class TaskHeatmapRenderer {
 			}
 		}
 
+		// Update cache
+		this.dataCache = taskData;
+		this.lastCacheTime = now;
+		console.log(`✅ Collected data for ${taskData.size} days`);
+
 		return taskData;
+	}
+
+	/**
+	 * Clear the data cache to force fresh data collection
+	 */
+	public clearCache() {
+		this.dataCache = null;
+		this.lastCacheTime = 0;
+		console.log('🗑️ Task data cache cleared');
+	}
+
+	/**
+	 * Cleanup method to unregister from plugin
+	 */
+	public destroy() {
+		this.plugin.unregisterRenderer(this);
+		this.clearCache();
 	}
 
 	private parseTasksWithDetails(content: string): { completed: number; total: number; taskDetails: TaskDetail[] } {
@@ -599,6 +642,34 @@ export class TaskHeatmapRenderer {
 		const dateTitle = header.createEl('span');
 		dateTitle.textContent = `📅 ${dateDisplay}`;
 
+		// Open Day button
+		const openDayBtn = header.createEl('button');
+		openDayBtn.textContent = 'Tag öffnen';
+		openDayBtn.className = CSS_CLASSES.OPEN_DAY_BUTTON;
+		openDayBtn.style.background = 'var(--interactive-accent)';
+		openDayBtn.style.color = 'var(--text-on-accent)';
+		openDayBtn.style.border = 'none';
+		openDayBtn.style.padding = '6px 12px';
+		openDayBtn.style.borderRadius = '6px';
+		openDayBtn.style.cursor = 'pointer';
+		openDayBtn.style.fontSize = '13px';
+		openDayBtn.style.fontWeight = '500';
+		openDayBtn.style.transition = 'all 0.2s ease';
+
+		openDayBtn.addEventListener('click', async () => {
+			await this.openDailyNote(day);
+		});
+
+		openDayBtn.addEventListener('mouseenter', () => {
+			openDayBtn.style.transform = 'translateY(-1px)';
+			openDayBtn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+		});
+
+		openDayBtn.addEventListener('mouseleave', () => {
+			openDayBtn.style.transform = 'translateY(0)';
+			openDayBtn.style.boxShadow = 'none';
+		});
+
 		// Close button
 		const closeBtn = header.createEl('button');
 		closeBtn.textContent = '×';
@@ -762,5 +833,134 @@ export class TaskHeatmapRenderer {
 		// Alternative: Could also combine with completion ratio
 		// const completionRatio = completedTasks / totalTasks;
 		// But for now, let's focus on absolute completed count
+	}
+
+	/**
+	 * Opens or creates a daily note for the specified day using dynamic naming
+	 */
+	private async openDailyNote(day: TaskDayData) {
+		try {
+			const vault = this.plugin.app.vault;
+			const workspace = this.plugin.app.workspace;
+			
+			// Generate dynamic path using the configured pattern and date format
+			const pattern = sanitizePathPattern(this.settings.dailyNoteFormat);
+			const fullPath = formatDynamicPath(pattern, day.date, this.settings.dateFormat);
+			
+			console.log(`🔍 Looking for daily note at: ${fullPath}`);
+			
+			// Check if note exists
+			let file = vault.getAbstractFileByPath(fullPath);
+			
+			if (!file) {
+				console.log(`📝 Creating new daily note: ${fullPath}`);
+				
+				// Ensure directory exists
+				const dirPath = getDirectoryPath(fullPath);
+				if (dirPath) {
+					await this.ensureDirectoryExists(dirPath);
+				}
+				
+				// Get template content
+				let content = '';
+				if (this.settings.useTemplate && this.settings.templateFile) {
+					content = await this.loadTemplate(this.settings.templateFile, day.date);
+				} else {
+					// Use default template with configured locale
+					content = processTemplate(getDefaultTemplate(), day.date, this.settings.dateFormat);
+				}
+				
+				// Create the file
+				file = await vault.create(fullPath, content);
+				console.log(`✅ Created daily note: ${fullPath}`);
+			} else {
+				console.log(`📖 Opening existing daily note: ${fullPath}`);
+			}
+			
+			// Open the note
+			// @ts-ignore - Obsidian TFile type checking
+			if (file && 'stat' in file) {
+				// @ts-ignore - Obsidian API
+				await workspace.getLeaf().openFile(file);
+				// @ts-ignore - Obsidian API
+				new Notice(`Daily note opened: ${fullPath.split('/').pop()}`);
+			}
+			
+		} catch (error) {
+			console.error('❌ Error opening daily note:', error);
+			// @ts-ignore - Obsidian API
+			new Notice(`Fehler beim Öffnen der Tagesnotiz: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Format date for note title
+	 */
+	private formatDateForTitle(date: Date): string {
+		const options: Intl.DateTimeFormatOptions = {
+			weekday: 'long',
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric'
+		};
+		return date.toLocaleDateString('de-DE', options);
+	}
+
+	/**
+	 * Ensure directory exists, create if necessary
+	 */
+	private async ensureDirectoryExists(dirPath: string) {
+		const vault = this.plugin.app.vault;
+		
+		// Split path into parts
+		const parts = dirPath.split('/').filter(part => part.length > 0);
+		let currentPath = '';
+		
+		for (const part of parts) {
+			currentPath = currentPath ? `${currentPath}/${part}` : part;
+			
+			// Check if folder exists
+			const folder = vault.getAbstractFileByPath(currentPath);
+			if (!folder) {
+				try {
+					await vault.createFolder(currentPath);
+					console.log(`📁 Created folder: ${currentPath}`);
+				} catch (error) {
+					// Folder might already exist due to race condition
+					if (!error.message.includes('already exists')) {
+						throw error;
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Load and process template file
+	 */
+	private async loadTemplate(templatePath: string, date: Date): Promise<string> {
+		try {
+			const vault = this.plugin.app.vault;
+			const templateFile = vault.getAbstractFileByPath(templatePath);
+			
+			if (!templateFile) {
+				console.warn(`⚠️ Template file not found: ${templatePath}, using default template`);
+				return processTemplate(getDefaultTemplate(), date, this.settings.dateFormat);
+			}
+			
+			// @ts-ignore - Obsidian TFile type checking
+			if ('stat' in templateFile) {
+				// @ts-ignore - Obsidian API
+				const content = await vault.read(templateFile);
+				return processTemplate(content, date, this.settings.dateFormat);
+			} else {
+				console.warn(`⚠️ Template path is not a file: ${templatePath}`);
+				return processTemplate(getDefaultTemplate(), date, this.settings.dateFormat);
+			}
+			
+		} catch (error) {
+			console.error(`❌ Error loading template: ${templatePath}`, error);
+			return processTemplate(getDefaultTemplate(), date, this.settings.dateFormat);
+		}
 	}
 }

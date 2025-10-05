@@ -31,7 +31,8 @@ export const CSS_CLASSES = {
 	CELL_CLICKABLE: 'heatmap-cell-clickable',
 	STATISTICS_PANEL: 'task-statistics-panel',
 	FADE_IN: 'heatmap-fade-in',
-	FADE_OUT: 'heatmap-fade-out'
+	FADE_OUT: 'heatmap-fade-out',
+	OPEN_DAY_BUTTON: 'open-day-button'
 } as const;
 
 // ============================================================

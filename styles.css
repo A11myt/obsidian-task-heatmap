@@ -111,3 +111,28 @@
     max-height: 1000px;
   }
 }
+
+/* Open Day Button Styles */
+.open-day-button {
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+  border: none !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+  white-space: nowrap !important;
+}
+
+.open-day-button:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+  background: var(--interactive-accent-hover) !important;
+}
+
+.open-day-button:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important;
+}

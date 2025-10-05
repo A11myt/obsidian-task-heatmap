@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import HeatmapCalendarPlugin from '../main';
 import { COLOR_SCHEMES } from './settings';
+import { previewPattern, sanitizePathPattern } from '../utils/dynamicNamingUtils';
 
 export class HeatmapSettingTab extends PluginSettingTab {
 	plugin: HeatmapCalendarPlugin;
@@ -117,15 +118,147 @@ export class HeatmapSettingTab extends PluginSettingTab {
 		// Date Format
 		new Setting(containerEl)
 			.setName('Date Format')
-			.setDesc('Locale for date display in task details (e.g., "en-US", "de-DE")')
+			.setDesc('Locale for date display and dynamic naming (e.g., "en-US", "de-DE", "fr-FR")')
 			.addText(text => text
 				.setPlaceholder('de-DE')
 				.setValue(this.plugin.settings.dateFormat)
 				.onChange(async (value) => {
 					this.plugin.settings.dateFormat = value;
 					await this.plugin.saveSettings();
+					this.updatePreview(); // Update preview when locale changes
 				}));
 		
+		// Dynamic Note Naming Section
+		containerEl.createEl('h3', { text: 'Daily Note Configuration' });
+
+		// Daily Note Format
+		new Setting(containerEl)
+			.setName('Daily Note Format')
+			.setDesc('Dynamic path and filename pattern. Use YYYY (year), MM (month), DD (day), dddd (weekday). Example: Notes/YYYY/MM/YYYY-MM-DD-dddd')
+			.addText(text => text
+				.setPlaceholder('Notes/YYYY/MM/YYYY-MM-DD-dddd')
+				.setValue(this.plugin.settings.dailyNoteFormat)
+				.onChange(async (value) => {
+					this.plugin.settings.dailyNoteFormat = value;
+					await this.plugin.saveSettings();
+					this.updatePreview();
+				}));
+
+		// Preview of current format
+		const previewDiv = containerEl.createDiv();
+		previewDiv.id = 'daily-note-preview';
+		setTimeout(() => this.updatePreview(previewDiv), 0);
+
+		// Use Template Toggle
+		new Setting(containerEl)
+			.setName('Use Template')
+			.setDesc('Create new daily notes from a template file')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.useTemplate)
+				.onChange(async (value) => {
+					this.plugin.settings.useTemplate = value;
+					await this.plugin.saveSettings();
+					this.display(); // Refresh to show/hide template file setting
+				}));
+
+		// Template File (only show if useTemplate is enabled)
+		if (this.plugin.settings.useTemplate) {
+			new Setting(containerEl)
+				.setName('Template File')
+				.setDesc('Path to template file for new daily notes (e.g., Templates/Daily.md)')
+				.addText(text => text
+					.setPlaceholder('Templates/Daily.md')
+					.setValue(this.plugin.settings.templateFile)
+					.onChange(async (value) => {
+						this.plugin.settings.templateFile = value;
+						await this.plugin.saveSettings();
+					}));
+		
+			// Template Preview
+			const templateInfoDiv = containerEl.createDiv();
+			templateInfoDiv.style.padding = '10px';
+			templateInfoDiv.style.backgroundColor = 'var(--background-secondary)';
+			templateInfoDiv.style.borderRadius = '5px';
+			templateInfoDiv.style.marginBottom = '15px';
+			templateInfoDiv.style.fontSize = '12px';
+			const locale = this.plugin.settings.dateFormat || 'de-DE';
+			const exampleDate = new Date().toLocaleDateString(locale, {
+				weekday: 'long',
+				year: 'numeric', 
+				month: 'long',
+				day: 'numeric'
+			});
+			
+			templateInfoDiv.innerHTML = `
+				<strong>📝 Template Variables:</strong><br>
+				<code>{{date}}</code> - Full formatted date (e.g., "${exampleDate}")<br>
+				<code>{{title}}</code> - Same as date (for compatibility)<br>
+				<code>{{time}}</code> - Current time (e.g., "14:30")<br>
+				<code>{{YYYY}}</code>, <code>{{MM}}</code>, <code>{{DD}}</code>, <code>{{dddd}}</code> - All date tokens available<br>
+				<strong>Current locale:</strong> ${locale}<br>
+				Example template content:<br>
+				<code># {{date}}<br><br>## Tasks<br>- [ ] <br><br>## Notes<br></code>
+			`;
+		}
+
+		// Auto-Refresh Section
+		containerEl.createEl('h3', { text: 'Auto-Refresh Settings' });
+
+		// Auto-refresh toggle
+		new Setting(containerEl)
+			.setName('Auto-Refresh Heatmap')
+			.setDesc('Automatically update the heatmap when daily notes are modified')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoRefresh)
+				.onChange(async (value) => {
+					this.plugin.settings.autoRefresh = value;
+					await this.plugin.saveSettings();
+					this.display(); // Refresh to show/hide related settings
+				}));
+
+		// Smart refresh toggle (only show if auto-refresh is enabled)
+		if (this.plugin.settings.autoRefresh) {
+			new Setting(containerEl)
+				.setName('Smart Refresh')
+				.setDesc('Only refresh when actual task changes are detected (prevents flickering)')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.smartRefresh)
+					.onChange(async (value) => {
+						this.plugin.settings.smartRefresh = value;
+						await this.plugin.saveSettings();
+					}));
+		}
+
+		// Refresh interval (only show if auto-refresh is enabled)
+		if (this.plugin.settings.autoRefresh) {
+			new Setting(containerEl)
+				.setName('Refresh Interval')
+				.setDesc('How often to check for changes (in seconds). Lower values = more responsive but higher CPU usage')
+				.addSlider(slider => slider
+					.setLimits(1, 30, 1)
+					.setValue(this.plugin.settings.refreshInterval)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.refreshInterval = value;
+						await this.plugin.saveSettings();
+						// Restart monitoring with new interval
+						if (this.plugin.refreshView) {
+							await this.plugin.refreshView();
+						}
+					}));
+
+			// Show notifications toggle
+			new Setting(containerEl)
+				.setName('Show Update Notifications')
+				.setDesc('Display a notification when the heatmap is automatically updated')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.showRefreshNotification)
+					.onChange(async (value) => {
+						this.plugin.settings.showRefreshNotification = value;
+						await this.plugin.saveSettings();
+					}));
+		}
+
 		// Info about year display
 		containerEl.createEl('h3', { text: 'Display Information' });
 		
@@ -138,6 +271,34 @@ export class HeatmapSettingTab extends PluginSettingTab {
 			<strong>📅 Date Range:</strong> Always shows current year (Jan 1 - Dec 31)<br>
 			<strong>🎨 Color Intensity:</strong> Darker = more completed tasks<br>
 			<strong>🖱️ Interaction:</strong> Click any cell to view tasks below the heatmap
+		`;
+	}
+
+	/**
+	 * Update preview of daily note format
+	 */
+	private updatePreview(container?: HTMLElement) {
+		const previewContainer = container || document.getElementById('daily-note-preview');
+		if (!previewContainer) return;
+
+		const pattern = this.plugin.settings.dailyNoteFormat || 'Notes/YYYY/MM/YYYY-MM-DD-dddd';
+		const sanitized = sanitizePathPattern(pattern);
+		const locale = this.plugin.settings.dateFormat || 'de-DE';
+		const preview = previewPattern(sanitized, undefined, locale);
+		
+		previewContainer.innerHTML = `
+			<div style="
+				padding: 8px 12px; 
+				background: var(--background-modifier-border); 
+				border-radius: 4px; 
+				font-family: monospace; 
+				font-size: 12px; 
+				color: var(--text-muted);
+				margin-top: 8px;
+				margin-bottom: 15px;
+			">
+				<strong>Preview:</strong> ${preview}
+			</div>
 		`;
 	}
 }
