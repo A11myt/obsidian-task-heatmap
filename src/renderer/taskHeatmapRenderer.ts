@@ -8,7 +8,6 @@ import {
 	sanitizePathPattern,
 	getDirectoryPath 
 } from '../utils/dynamicNamingUtils';
-
 /**
  * Data structure representing a single day's task information
  */
@@ -20,6 +19,7 @@ interface TaskDayData {
 	dayOfWeek: number;       // 0=Monday, 1=Tuesday, ..., 6=Sunday
 	hasNote: boolean;        // Does a daily note exist?
 	taskDetails: TaskDetail[]; // Full task information
+	allTags: string[];       // All hashtags from the entire file content
 }
 
 /**
@@ -29,6 +29,7 @@ interface TaskDetail {
 	text: string;      // Task description text
 	completed: boolean; // Is the task completed ([x])?
 	line: number;      // Line number in the source file
+	tags: string[];    // Simple hashtags extracted from text
 }
 
 /**
@@ -101,6 +102,9 @@ export class TaskHeatmapRenderer {
 			this.renderLegend(heatmapContainer, taskData);
 		}
 
+		// Tag overview is now shown specifically for selected days in renderTaskDetails
+		// No general tag overview needed anymore
+
 		// Create task details container below heatmap
 		const taskDetailsContainer = container.createEl('div');
 		taskDetailsContainer.addClass('task-details-container');
@@ -148,7 +152,7 @@ export class TaskHeatmapRenderer {
 					
 					// Read file content to count tasks and get details
 					const content = await this.plugin.app.vault.read(file);
-					const { completed, total, taskDetails } = this.parseTasksWithDetails(content);
+					const { completed, total, taskDetails, allTags } = this.parseTasksWithDetails(content);
 					
 					// Include ALL notes with dates, even if they have no tasks
 					const date = new Date(parseInt(year), monthNum, parseInt(day));
@@ -161,7 +165,8 @@ export class TaskHeatmapRenderer {
 						totalTasks: total,
 						dayOfWeek: dayOfWeek,
 						hasNote: true,
-						taskDetails: taskDetails
+						taskDetails: taskDetails,
+						allTags: allTags
 					});
 				}
 			}
@@ -192,9 +197,12 @@ export class TaskHeatmapRenderer {
 		this.clearCache();
 	}
 
-	private parseTasksWithDetails(content: string): { completed: number; total: number; taskDetails: TaskDetail[] } {
+	private parseTasksWithDetails(content: string): { completed: number; total: number; taskDetails: TaskDetail[]; allTags: string[] } {
 		const taskDetails: TaskDetail[] = [];
 		const lines = content.split('\n');
+		
+		// Extract all hashtags from the entire content (not just tasks)
+		const allContentTags = this.extractHashtags(content);
 		
 		lines.forEach((line, index) => {
 			// Match tasks: - [x], - [X], - [ ], * [x], etc.
@@ -203,10 +211,14 @@ export class TaskHeatmapRenderer {
 				const isCompleted = taskMatch[1].toLowerCase() === 'x';
 				const taskText = taskMatch[2].trim();
 				
+				// Extract simple hashtags from task text
+				const tags = this.extractHashtags(taskText);
+				
 				taskDetails.push({
 					text: taskText || '(Empty task)',
 					completed: isCompleted,
-					line: index + 1
+					line: index + 1,
+					tags: tags
 				});
 			}
 		});
@@ -214,7 +226,22 @@ export class TaskHeatmapRenderer {
 		const completed = taskDetails.filter(task => task.completed).length;
 		const total = taskDetails.length;
 		
-		return { completed, total, taskDetails };
+		return { completed, total, taskDetails, allTags: allContentTags };
+	}
+
+	/**
+	 * Extract hashtags from text using regex
+	 */
+	private extractHashtags(text: string): string[] {
+		const hashtagRegex = /#([a-zA-Z0-9_-]+)/g;
+		const matches = [];
+		let match;
+		
+		while ((match = hashtagRegex.exec(text)) !== null) {
+			matches.push(match[1]);
+		}
+		
+		return matches;
 	}
 
 	calculateDateRange(): { startDate: Date; endDate: Date } {
@@ -252,7 +279,8 @@ export class TaskHeatmapRenderer {
 					totalTasks: 0,
 					dayOfWeek: dayOfWeek,
 					hasNote: false,
-					taskDetails: []
+					taskDetails: [],
+					allTags: []
 				};
 			} else {
 				// Ensure dayOfWeek is set correctly
@@ -354,7 +382,8 @@ export class TaskHeatmapRenderer {
 					totalTasks: 0,
 					dayOfWeek: dayOfWeek,
 					hasNote: false,
-					taskDetails: []
+					taskDetails: [],
+					allTags: []
 				};
 			}
 
@@ -385,7 +414,8 @@ export class TaskHeatmapRenderer {
 				totalTasks: 0,
 				dayOfWeek: i,
 				hasNote: false,
-				taskDetails: []
+				taskDetails: [],
+				allTags: []
 			});
 		}
 
@@ -393,23 +423,22 @@ export class TaskHeatmapRenderer {
 			const dayOfWeek = (currentDate.getDay() + 6) % 7; // Mo=0, Su=6
 			
 			const dateStr = currentDate.toISOString().split('T')[0];
-			let dayData = taskData.get(dateStr);
-			
-			if (!dayData) {
-				dayData = {
-					date: new Date(currentDate),
-					dateStr: dateStr,
-					completedTasks: 0,
-					totalTasks: 0,
-					dayOfWeek: dayOfWeek,
-					hasNote: false,
-					taskDetails: []
-				};
-			}
+		let dayData = taskData.get(dateStr);
+		
+		if (!dayData) {
+			dayData = {
+				date: new Date(currentDate),
+				dateStr: dateStr,
+				completedTasks: 0,
+				totalTasks: 0,
+				dayOfWeek: dayOfWeek,
+				hasNote: false,
+				taskDetails: [],
+				allTags: []
+			};
+		}
 
-			currentWeek.push(dayData);
-			
-			// Start new week on Monday (after Sunday)
+		currentWeek.push(dayData);			// Start new week on Monday (after Sunday)
 			if (currentWeek.length === 7) {
 				weeks.push(currentWeek);
 				currentWeek = [];
@@ -429,7 +458,8 @@ export class TaskHeatmapRenderer {
 					totalTasks: 0,
 					dayOfWeek: currentWeek.length,
 					hasNote: false,
-					taskDetails: []
+					taskDetails: [],
+					allTags: []
 				});
 			}
 			weeks.push(currentWeek);
@@ -580,6 +610,17 @@ export class TaskHeatmapRenderer {
 
 		container.createEl('span', { text: 'More' });
 	}
+
+	private renderTagOverview(container: HTMLElement, taskData: Map<string, TaskDayData>) {
+		// This method is no longer used for general overview
+		// Tags are now shown specifically for selected days in renderTaskDetails
+		// We keep it for potential future use but don't call it by default
+		return;
+	}
+
+
+
+
 
 	// ============================================================
 	// INTERACTIVE FEATURES
@@ -762,7 +803,7 @@ export class TaskHeatmapRenderer {
 				checkbox.style.marginTop = '2px';
 				checkbox.textContent = task.completed ? '✅' : '☐';
 
-				// Task text
+				// Task text with highlighted tags
 				const taskText = taskItem.createEl('span');
 				taskText.style.flex = '1';
 				taskText.style.wordBreak = 'break-word';
@@ -771,7 +812,48 @@ export class TaskHeatmapRenderer {
 					taskText.style.textDecoration = 'line-through';
 					taskText.style.color = 'var(--text-muted)';
 				}
+				
+				// Simple task text display
 				taskText.textContent = task.text;
+
+				// Show tags under task text if any exist
+				if (task.tags.length > 0) {
+					const tagsContainer = taskItem.createEl('div');
+					tagsContainer.style.display = 'flex';
+					tagsContainer.style.flexWrap = 'wrap';
+					tagsContainer.style.gap = '4px';
+					tagsContainer.style.marginTop = '6px';
+					tagsContainer.style.marginLeft = '26px'; // Align with task text
+
+					task.tags.forEach(tag => {
+						const tagSpan = tagsContainer.createEl('span');
+						tagSpan.textContent = `#${tag}`;
+						tagSpan.style.background = 'var(--interactive-accent)';
+						tagSpan.style.color = 'var(--text-on-accent)';
+						tagSpan.style.padding = '2px 6px';
+						tagSpan.style.borderRadius = '8px';
+						tagSpan.style.fontSize = '10px';
+						tagSpan.style.fontWeight = '500';
+						tagSpan.style.cursor = 'pointer';
+						tagSpan.style.transition = 'all 0.2s ease';
+
+						// Hover effect
+						tagSpan.addEventListener('mouseenter', () => {
+							tagSpan.style.transform = 'scale(1.05)';
+							tagSpan.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+						});
+
+						tagSpan.addEventListener('mouseleave', () => {
+							tagSpan.style.transform = 'scale(1)';
+							tagSpan.style.boxShadow = 'none';
+						});
+
+						// Click to open in search
+						tagSpan.addEventListener('click', () => {
+							this.openTagInSearch(tag);
+						});
+					});
+				}
 
 				// Line number badge
 				const lineNumber = taskItem.createEl('span');
@@ -782,6 +864,64 @@ export class TaskHeatmapRenderer {
 				lineNumber.style.padding = '2px 6px';
 				lineNumber.style.borderRadius = '3px';
 				lineNumber.textContent = `L${task.line}`;
+			});
+		}
+
+		// Show all tags from this specific day
+		const dayTags = new Set<string>();
+		
+		// Collect tags from tasks
+		day.taskDetails.forEach(task => {
+			task.tags.forEach(tag => dayTags.add(tag));
+		});
+		
+		// Collect all tags from entire file content (including standalone hashtags)
+		day.allTags.forEach(tag => dayTags.add(tag));
+
+		// Only render tag section if there are tags for this day
+		if (dayTags.size > 0) {
+			const tagsHeader = container.createEl('div');
+			tagsHeader.style.fontWeight = 'bold';
+			tagsHeader.style.fontSize = '14px';
+			tagsHeader.style.marginTop = '15px';
+			tagsHeader.style.marginBottom = '10px';
+			tagsHeader.textContent = 'Tags:';
+
+			const tagsContainer = container.createEl('div');
+			tagsContainer.style.display = 'flex';
+			tagsContainer.style.flexWrap = 'wrap';
+			tagsContainer.style.gap = '4px';
+
+			// Sort tags alphabetically and display them small and not bold
+			const sortedTags = Array.from(dayTags).sort();
+			
+			sortedTags.forEach(tag => {
+				const tagElement = tagsContainer.createEl('span');
+				tagElement.textContent = `#${tag}`;
+				tagElement.style.background = 'var(--interactive-accent)';
+				tagElement.style.color = 'var(--text-on-accent)';
+				tagElement.style.padding = '2px 6px';
+				tagElement.style.borderRadius = '8px';
+				tagElement.style.fontSize = '10px';  // Same as task tags - small
+				tagElement.style.fontWeight = '500'; // Same as task tags - not bold
+				tagElement.style.cursor = 'pointer';
+				tagElement.style.transition = 'all 0.2s ease';
+
+				// Hover effect
+				tagElement.addEventListener('mouseenter', () => {
+					tagElement.style.transform = 'scale(1.05)';
+					tagElement.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+				});
+
+				tagElement.addEventListener('mouseleave', () => {
+					tagElement.style.transform = 'scale(1)';
+					tagElement.style.boxShadow = 'none';
+				});
+
+				// Click to open in search
+				tagElement.addEventListener('click', () => {
+					this.openTagInSearch(tag);
+				});
 			});
 		}
 	}
@@ -833,6 +973,46 @@ export class TaskHeatmapRenderer {
 		// Alternative: Could also combine with completion ratio
 		// const completionRatio = completedTasks / totalTasks;
 		// But for now, let's focus on absolute completed count
+	}
+
+	/**
+	 * Opens a tag in the Obsidian search
+	 */
+	private openTagInSearch(tag: string) {
+		try {
+			// Search query for the tag
+			const searchQuery = `tag:#${tag}`;
+			
+			// Try to find existing search leaf first
+			const searchLeaf = this.plugin.app.workspace.getLeavesOfType('search')[0];
+			
+			if (searchLeaf) {
+				// If search pane exists, use it and set the query
+				const searchView = searchLeaf.view as any;
+				if (searchView && typeof searchView.setQuery === 'function') {
+					searchView.setQuery(searchQuery);
+					this.plugin.app.workspace.revealLeaf(searchLeaf);
+				}
+			} else {
+				// If no search pane exists, create a new one
+				const leaf = this.plugin.app.workspace.getLeaf('tab');
+				leaf.setViewState({
+					type: 'search',
+					state: {
+						query: searchQuery
+					}
+				});
+			}
+			
+			// Show a notice to confirm the action
+			(this.plugin.app as any).notice?.(`Searching for tag: #${tag}`) || 
+			new (this.plugin.app as any).Notice(`Searching for tag: #${tag}`);
+			
+		} catch (error) {
+			console.error('Error opening tag in search:', error);
+			// Fallback: show notice with search query
+			new (this.plugin.app as any).Notice(`Search manually for: tag:#${tag}`);
+		}
 	}
 
 	/**

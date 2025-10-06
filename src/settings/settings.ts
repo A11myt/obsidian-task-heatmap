@@ -25,6 +25,9 @@ export interface HeatmapSettings {
 	refreshInterval: number; // in seconds
 	showRefreshNotification: boolean;
 	smartRefresh: boolean; // Only refresh on actual task changes
+	// Tag overview settings
+	showTagOverview: boolean;
+	tagOverviewTitle: string;
 }
 
 export const COLOR_SCHEMES = {
@@ -59,5 +62,8 @@ export const DEFAULT_SETTINGS: HeatmapSettings = {
 	autoRefresh: true,
 	refreshInterval: 3, // seconds
 	showRefreshNotification: false,
-	smartRefresh: true // Only refresh on actual task changes
+	smartRefresh: true, // Only refresh on actual task changes
+	// Tag overview defaults
+	showTagOverview: true,
+	tagOverviewTitle: 'Tags'
 };

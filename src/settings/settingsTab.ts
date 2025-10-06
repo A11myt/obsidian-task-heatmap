@@ -115,6 +115,31 @@ export class HeatmapSettingTab extends PluginSettingTab {
 					await this.plugin.refreshView();
 				}));
 
+		// Show Tag Overview
+		new Setting(containerEl)
+			.setName('Show Tag Overview')
+			.setDesc('Display a tag overview below the heatmap showing all hashtags from tasks')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showTagOverview)
+				.onChange(async (value) => {
+					this.plugin.settings.showTagOverview = value;
+					await this.plugin.saveSettings();
+					await this.plugin.refreshView();
+				}));
+
+		// Tag Overview Title
+		new Setting(containerEl)
+			.setName('Tag Overview Title')
+			.setDesc('Title displayed above the tag overview')
+			.addText(text => text
+				.setPlaceholder('Tag Übersicht')
+				.setValue(this.plugin.settings.tagOverviewTitle)
+				.onChange(async (value) => {
+					this.plugin.settings.tagOverviewTitle = value;
+					await this.plugin.saveSettings();
+					await this.plugin.refreshView();
+				}));
+
 		// Date Format
 		new Setting(containerEl)
 			.setName('Date Format')
@@ -127,6 +152,8 @@ export class HeatmapSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					this.updatePreview(); // Update preview when locale changes
 				}));
+
+
 		
 		// Dynamic Note Naming Section
 		containerEl.createEl('h3', { text: 'Daily Note Configuration' });
