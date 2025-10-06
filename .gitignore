@@ -1,23 +1,31 @@
-# Exclusions
+# Build outputs
 node_modules/
 main.js
 *.map
-
-# Build
 dist/
 
-# OS
+# Development files
+deployment/
+Notes/
+*.zip
+
+# OS files
 .DS_Store
 Thumbs.db
+desktop.ini
+*.lnk
 
-# IDE
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
+*.tmp
 
 # Logs
 *.log
+npm-debug.log*
+.npm
 npm-debug.log*
 
 # Testing

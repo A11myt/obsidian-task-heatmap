@@ -1,4 +1,4 @@
-import { HeatmapSettings, COLOR_SCHEMES } from '../settings/settings';
+import { HeatmapSettings, COLOR_SCHEMES, SpecialTag } from '../settings/settings';
 import HeatmapCalendarPlugin from '../main';
 import { CSS_CLASSES } from '../constants';
 import { 
@@ -828,12 +828,25 @@ export class TaskHeatmapRenderer {
 					task.tags.forEach(tag => {
 						const tagSpan = tagsContainer.createEl('span');
 						tagSpan.textContent = `#${tag}`;
-						tagSpan.style.background = 'var(--interactive-accent)';
-						tagSpan.style.color = 'var(--text-on-accent)';
+						
+						// Check if this is a special tag with custom color
+						const specialTag = this.settings.specialTags.find(st => st.name === tag && st.enabled);
+						
+						if (specialTag) {
+							// Use custom color for special tags
+							tagSpan.style.background = specialTag.color;
+							tagSpan.style.color = this.getContrastColor(specialTag.color);
+							tagSpan.style.border = `1px solid ${this.darkenColor(specialTag.color, 20)}`;
+							tagSpan.style.fontWeight = '600'; // Make special tags bolder
+						} else {
+							// Default styling for regular tags
+							tagSpan.style.background = 'var(--interactive-accent)';
+							tagSpan.style.color = 'var(--text-on-accent)';
+						}
+						
 						tagSpan.style.padding = '2px 6px';
 						tagSpan.style.borderRadius = '8px';
 						tagSpan.style.fontSize = '10px';
-						tagSpan.style.fontWeight = '500';
 						tagSpan.style.cursor = 'pointer';
 						tagSpan.style.transition = 'all 0.2s ease';
 
@@ -1142,5 +1155,47 @@ export class TaskHeatmapRenderer {
 			console.error(`❌ Error loading template: ${templatePath}`, error);
 			return processTemplate(getDefaultTemplate(), date, this.settings.dateFormat);
 		}
+	}
+
+	/**
+	 * Calculate contrast color (black or white) for a given background color
+	 */
+	private getContrastColor(backgroundColor: string): string {
+		// Remove # if present
+		const hex = backgroundColor.replace('#', '');
+		
+		// Convert to RGB
+		const r = parseInt(hex.substr(0, 2), 16);
+		const g = parseInt(hex.substr(2, 2), 16);
+		const b = parseInt(hex.substr(4, 2), 16);
+		
+		// Calculate luminance using W3C formula
+		const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+		
+		// Return black for light backgrounds, white for dark backgrounds
+		return luminance > 0.5 ? '#000000' : '#ffffff';
+	}
+
+	/**
+	 * Darken a hex color by a given percentage
+	 */
+	private darkenColor(hex: string, percent: number): string {
+		// Remove # if present
+		const color = hex.replace('#', '');
+		
+		// Convert to RGB
+		const r = parseInt(color.substr(0, 2), 16);
+		const g = parseInt(color.substr(2, 2), 16);
+		const b = parseInt(color.substr(4, 2), 16);
+		
+		// Darken each component
+		const darkenedR = Math.max(0, Math.floor(r * (1 - percent / 100)));
+		const darkenedG = Math.max(0, Math.floor(g * (1 - percent / 100)));
+		const darkenedB = Math.max(0, Math.floor(b * (1 - percent / 100)));
+		
+		// Convert back to hex
+		const toHex = (n: number) => n.toString(16).padStart(2, '0');
+		
+		return `#${toHex(darkenedR)}${toHex(darkenedG)}${toHex(darkenedB)}`;
 	}
 }

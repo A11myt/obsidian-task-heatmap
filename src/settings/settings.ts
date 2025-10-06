@@ -28,6 +28,14 @@ export interface HeatmapSettings {
 	// Tag overview settings
 	showTagOverview: boolean;
 	tagOverviewTitle: string;
+	// Special tags with custom colors
+	specialTags: SpecialTag[];
+}
+
+export interface SpecialTag {
+	name: string;        // Tag name without # (e.g., "urlaub")
+	color: string;       // Hex color code (e.g., "#ff6b6b")
+	enabled: boolean;    // Whether this tag is active
 }
 
 export const COLOR_SCHEMES = {
@@ -65,5 +73,11 @@ export const DEFAULT_SETTINGS: HeatmapSettings = {
 	smartRefresh: true, // Only refresh on actual task changes
 	// Tag overview defaults
 	showTagOverview: true,
-	tagOverviewTitle: 'Tags'
+	tagOverviewTitle: 'Tags',
+	// Special tags defaults
+	specialTags: [
+		{ name: 'urlaub', color: '#ff6b6b', enabled: true },
+		{ name: 'wichtig', color: '#ffd93d', enabled: true },
+		{ name: 'arbeit', color: '#6bcf7f', enabled: true }
+	]
 };

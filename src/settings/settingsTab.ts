@@ -286,6 +286,82 @@ export class HeatmapSettingTab extends PluginSettingTab {
 					}));
 		}
 
+		// Special Tags Section
+		containerEl.createEl('h3', { text: 'Spezielle Tags' });
+		
+		const specialTagsInfo = containerEl.createDiv();
+		specialTagsInfo.style.marginBottom = '15px';
+		specialTagsInfo.style.padding = '10px';
+		specialTagsInfo.style.backgroundColor = 'var(--background-secondary)';
+		specialTagsInfo.style.borderRadius = '5px';
+		specialTagsInfo.innerHTML = `
+			<strong>🏷️ Spezielle Tags mit benutzerdefinierten Farben</strong><br>
+			<small>Definieren Sie Tags wie #urlaub mit eigenen Farben für bessere Sichtbarkeit in den Tasks</small>
+		`;
+
+		// Render special tags list
+		this.renderSpecialTagsList(containerEl);
+
+		// Add new special tag section
+		const addTagDiv = containerEl.createDiv();
+		addTagDiv.style.marginBottom = '20px';
+		addTagDiv.style.padding = '15px';
+		addTagDiv.style.border = '1px solid var(--background-modifier-border)';
+		addTagDiv.style.borderRadius = '5px';
+		
+		addTagDiv.createEl('h4', { text: 'Neuen speziellen Tag hinzufügen' });
+		
+		let newTagName = '';
+		let newTagColor = '#ff6b6b';
+		
+		const tagInputContainer = addTagDiv.createDiv();
+		tagInputContainer.style.display = 'flex';
+		tagInputContainer.style.gap = '10px';
+		tagInputContainer.style.alignItems = 'center';
+		tagInputContainer.style.marginBottom = '10px';
+		
+		// Tag name input
+		const nameInput = tagInputContainer.createEl('input');
+		nameInput.type = 'text';
+		nameInput.placeholder = 'Tag Name (ohne #)';
+		nameInput.style.flex = '1';
+		nameInput.addEventListener('input', (e) => {
+			newTagName = (e.target as HTMLInputElement).value;
+		});
+		
+		// Color input
+		const colorInput = tagInputContainer.createEl('input');
+		colorInput.type = 'color';
+		colorInput.value = newTagColor;
+		colorInput.style.width = '50px';
+		colorInput.style.height = '30px';
+		colorInput.addEventListener('change', (e) => {
+			newTagColor = (e.target as HTMLInputElement).value;
+		});
+		
+		// Add button
+		const addButton = tagInputContainer.createEl('button');
+		addButton.textContent = 'Hinzufügen';
+		addButton.addEventListener('click', async () => {
+			if (newTagName.trim()) {
+				// Check if tag already exists
+				const exists = this.plugin.settings.specialTags.some(tag => tag.name === newTagName.trim());
+				if (!exists) {
+					this.plugin.settings.specialTags.push({
+						name: newTagName.trim(),
+						color: newTagColor,
+						enabled: true
+					});
+					await this.plugin.saveSettings();
+					await this.plugin.refreshView();
+					this.display(); // Refresh the settings display
+				} else {
+					// Show error (simple alert for now)
+					alert('Ein Tag mit diesem Namen existiert bereits.');
+				}
+			}
+		});
+
 		// Info about year display
 		containerEl.createEl('h3', { text: 'Display Information' });
 		
@@ -299,6 +375,92 @@ export class HeatmapSettingTab extends PluginSettingTab {
 			<strong>🎨 Color Intensity:</strong> Darker = more completed tasks<br>
 			<strong>🖱️ Interaction:</strong> Click any cell to view tasks below the heatmap
 		`;
+	}
+
+	/**
+	 * Render the list of special tags with edit/delete options
+	 */
+	private renderSpecialTagsList(containerEl: HTMLElement) {
+		const specialTagsContainer = containerEl.createDiv();
+		specialTagsContainer.style.marginBottom = '15px';
+		
+		if (this.plugin.settings.specialTags.length === 0) {
+			const emptyMsg = specialTagsContainer.createDiv();
+			emptyMsg.style.color = 'var(--text-muted)';
+			emptyMsg.style.fontStyle = 'italic';
+			emptyMsg.textContent = 'Keine speziellen Tags definiert';
+			return;
+		}
+		
+		this.plugin.settings.specialTags.forEach((tag, index) => {
+			const tagItem = specialTagsContainer.createDiv();
+			tagItem.style.display = 'flex';
+			tagItem.style.alignItems = 'center';
+			tagItem.style.gap = '10px';
+			tagItem.style.padding = '8px';
+			tagItem.style.marginBottom = '5px';
+			tagItem.style.border = '1px solid var(--background-modifier-border)';
+			tagItem.style.borderRadius = '4px';
+			
+			// Color preview
+			const colorPreview = tagItem.createDiv();
+			colorPreview.style.width = '20px';
+			colorPreview.style.height = '20px';
+			colorPreview.style.backgroundColor = tag.color;
+			colorPreview.style.borderRadius = '3px';
+			colorPreview.style.border = '1px solid var(--background-modifier-border)';
+			
+			// Tag name
+			const tagName = tagItem.createEl('span');
+			tagName.textContent = `#${tag.name}`;
+			tagName.style.flex = '1';
+			tagName.style.fontFamily = 'monospace';
+			tagName.style.fontSize = '14px';
+			if (!tag.enabled) {
+				tagName.style.opacity = '0.5';
+				tagName.style.textDecoration = 'line-through';
+			}
+			
+			// Enable/Disable toggle
+			const enableToggle = tagItem.createEl('input');
+			enableToggle.type = 'checkbox';
+			enableToggle.checked = tag.enabled;
+			enableToggle.addEventListener('change', async (e) => {
+				this.plugin.settings.specialTags[index].enabled = (e.target as HTMLInputElement).checked;
+				await this.plugin.saveSettings();
+				await this.plugin.refreshView();
+				this.display(); // Refresh the display
+			});
+			
+			// Color input for editing
+			const colorInput = tagItem.createEl('input');
+			colorInput.type = 'color';
+			colorInput.value = tag.color;
+			colorInput.style.width = '30px';
+			colorInput.style.height = '25px';
+			colorInput.addEventListener('change', async (e) => {
+				this.plugin.settings.specialTags[index].color = (e.target as HTMLInputElement).value;
+				await this.plugin.saveSettings();
+				await this.plugin.refreshView();
+				this.display(); // Refresh the display
+			});
+			
+			// Delete button
+			const deleteButton = tagItem.createEl('button');
+			deleteButton.textContent = '🗑️';
+			deleteButton.style.background = 'none';
+			deleteButton.style.border = 'none';
+			deleteButton.style.cursor = 'pointer';
+			deleteButton.style.fontSize = '14px';
+			deleteButton.addEventListener('click', async () => {
+				if (confirm(`Möchten Sie den Tag "#${tag.name}" wirklich löschen?`)) {
+					this.plugin.settings.specialTags.splice(index, 1);
+					await this.plugin.saveSettings();
+					await this.plugin.refreshView();
+					this.display(); // Refresh the display
+				}
+			});
+		});
 	}
 
 	/**

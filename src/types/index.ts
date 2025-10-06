@@ -10,6 +10,7 @@ export interface TaskDetail {
 	text: string;
 	completed: boolean;
 	line: number;
+	tags: string[];    // Simple hashtags extracted from text
 }
 
 export interface TaskParseResult {
@@ -40,6 +41,13 @@ export interface TaskDayData {
 	dayOfWeek: number;
 	hasNote: boolean;
 	taskDetails: TaskDetail[];
+	allTags: string[];       // All hashtags from the entire file content
+}
+
+export interface SpecialTag {
+	name: string;        // Tag name without # (e.g., "urlaub")
+	color: string;       // Hex color code (e.g., "#ff6b6b")
+	enabled: boolean;    // Whether this tag is active
 }
 
 // ============================================================

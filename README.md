@@ -1,13 +1,20 @@
-# Task Heatmap Plugin for Obsidian
+# 📊 Task Heatmap Plugin for Obsidian
 
-A GitHub-style contribution graph for tracking daily tasks in your Obsidian vault. Visualize your task completion over time with an intuitive heatmap display.
+A GitHub-style contribution graph with **special tags** and custom colors for tracking daily tasks in your Obsidian vault. Visualize your task completion over time with an intuitive heatmap display and priority-based tag highlighting.
 
 ![Task Heatmap Preview](https://img.shields.io/badge/Obsidian-Plugin-purple)
 
-## 🎯 Features
+## ✨ Features
 
-- **GitHub-Style Heatmap**: Visual representation of your daily task completion
-- **Interactive Task Details**: Click on any day to view tasks below the heatmap
+### 🎨 Special Tags with Custom Colors
+- **Priority Tags**: Define important tags like `#urlaub`, `#wichtig` with custom colors
+- **Visual Hierarchy**: Special tags stand out with bold colors and better contrast
+- **Easy Configuration**: Manage special tags directly in plugin settings
+- **Live Updates**: Changes appear instantly in the heatmap
+
+### 📊 GitHub-Style Heatmap
+- **Visual Task Tracking**: See your daily task completion at a glance
+- **Interactive Details**: Click on any day to view tasks below the heatmap
 - **7-Row Layout**: One row per weekday (Monday-Sunday), days flow horizontally
 - **Color-Coded Progress**: Darker colors indicate more completed tasks
 - **Task Statistics**: See completion percentage and task counts per day

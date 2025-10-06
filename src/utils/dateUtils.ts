@@ -110,7 +110,8 @@ function parseTaskLine(line: string, lineNumber: number): TaskDetail | null {
 	return {
 		text,
 		completed: isCompleted,
-		line: lineNumber
+		line: lineNumber,
+		tags: [] // This utility doesn't extract tags, that's done in the renderer
 	};
 }
 
