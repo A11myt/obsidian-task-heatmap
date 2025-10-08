@@ -1,6 +1,6 @@
 import { HeatmapSettings, COLOR_SCHEMES, SpecialTag } from '../settings/settings';
 import HeatmapCalendarPlugin from '../main';
-import { CSS_CLASSES } from '../constants';
+import { CSS_CLASSES } from '../constants/index';
 import { 
 	formatDynamicPath, 
 	processTemplate, 
@@ -45,6 +45,32 @@ export class TaskHeatmapRenderer {
 	private dataCache: Map<string, TaskDayData> | null = null;
 	private lastCacheTime: number = 0;
 
+	// Helper method for safe element creation
+	private createEl(parent: HTMLElement, tag: string, options: any = {}): HTMLElement {
+		if ('createEl' in parent && typeof (parent as any).createEl === 'function') {
+			return (parent as any).createEl(tag, options);
+		} else {
+			const element = document.createElement(tag);
+			if (options.text) {
+				element.textContent = options.text;
+			}
+			if (options.cls) {
+				element.className = options.cls;
+			}
+			parent.appendChild(element);
+			return element;
+		}
+	}
+
+	// Helper method for safe container emptying
+	private emptyContainer(container: HTMLElement): void {
+		if ('empty' in container && typeof (container as any).empty === 'function') {
+			(container as any).empty();
+		} else {
+			container.innerHTML = '';
+		}
+	}
+
 	constructor(plugin: HeatmapCalendarPlugin, settings: HeatmapSettings) {
 		this.plugin = plugin;
 		this.settings = settings;
@@ -58,9 +84,18 @@ export class TaskHeatmapRenderer {
 	// ============================================================
 
 	async render(container: HTMLElement) {
-		// Clear container first
-		container.empty();
-		container.addClass('heatmap-calendar-view');
+		// Clear container first - safe fallback for non-Obsidian environments
+		if ('empty' in container && typeof (container as any).empty === 'function') {
+			(container as any).empty();
+		} else {
+			container.innerHTML = '';
+		}
+		
+		if ('addClass' in container && typeof (container as any).addClass === 'function') {
+			(container as any).addClass('heatmap-calendar-view');
+		} else {
+			container.className += ' heatmap-calendar-view';
+		}
 		
 		console.log('🎯 Starting Task Heatmap render...');
 		
@@ -74,7 +109,9 @@ export class TaskHeatmapRenderer {
 		const { startDate, endDate } = this.calculateDateRange();
 
 		// Create heatmap container
+		// @ts-ignore - Obsidian API
 		const heatmapContainer = container.createEl('div');
+		// @ts-ignore - Obsidian API
 		heatmapContainer.addClass('heatmap-container');
 		heatmapContainer.style.padding = '10px 0';
 
@@ -123,14 +160,15 @@ export class TaskHeatmapRenderer {
 	// ============================================================
 
 	async collectTaskData(forceRefresh: boolean = false): Promise<Map<string, TaskDayData>> {
-		// Use cache if available and not forced to refresh
-		const now = Date.now();
-		if (!forceRefresh && this.dataCache && (now - this.lastCacheTime < 2000)) {
-			console.log('📋 Using cached task data');
-			return this.dataCache;
-		}
+		try {
+			// Use cache if available and not forced to refresh
+			const now = Date.now();
+			if (!forceRefresh && this.dataCache && (now - this.lastCacheTime < 1000)) {
+				console.log('📋 Using cached task data');
+				return this.dataCache;
+			}
 
-		console.log('🔄 Collecting fresh task data...');
+			console.log('🔄 Collecting fresh task data...');
 		const taskData = new Map<string, TaskDayData>();
 		const dateRegex = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/;
 		const monthMap: { [key: string]: number } = {
@@ -138,7 +176,7 @@ export class TaskHeatmapRenderer {
 			Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
 		};
 
-		const files = this.plugin.app.vault.getMarkdownFiles();
+		const files = (this.plugin as any).app.vault.getMarkdownFiles();
 
 		for (const file of files) {
 			if (file.path.startsWith(this.settings.notesFolder)) {
@@ -151,7 +189,7 @@ export class TaskHeatmapRenderer {
 					const dateStr = `${year}-${String(monthNum + 1).padStart(2, '0')}-${day}`;
 					
 					// Read file content to count tasks and get details
-					const content = await this.plugin.app.vault.read(file);
+					const content = await (this.plugin as any).app.vault.read(file);
 					const { completed, total, taskDetails, allTags } = this.parseTasksWithDetails(content);
 					
 					// Include ALL notes with dates, even if they have no tasks
@@ -172,12 +210,17 @@ export class TaskHeatmapRenderer {
 			}
 		}
 
-		// Update cache
-		this.dataCache = taskData;
-		this.lastCacheTime = now;
-		console.log(`✅ Collected data for ${taskData.size} days`);
+			// Update cache
+			this.dataCache = taskData;
+			this.lastCacheTime = now;
+			console.log(`✅ Collected data for ${taskData.size} days`);
 
-		return taskData;
+			return taskData;
+		} catch (error) {
+			console.error('❌ Error collecting task data:', error);
+			// Return empty data on error to prevent crashes
+			return new Map<string, TaskDayData>();
+		}
 	}
 
 	/**
@@ -508,6 +551,23 @@ export class TaskHeatmapRenderer {
 		cell.style.userSelect = 'none';
 		cell.style.border = '1px solid transparent';
 
+		// Add special tag indicator if this day contains special tags
+		const specialTagInfo = this.getSpecialTagForDay(day);
+		if (specialTagInfo) {
+			console.log(`🏷️ Special tag found for ${day.dateStr}: ${specialTagInfo.name} (${specialTagInfo.color})`);
+			const indicator = this.createEl(cellWrapper, 'div');
+			indicator.style.position = 'absolute';
+			indicator.style.top = '1px';
+			indicator.style.right = '1px';
+			indicator.style.width = '4px';
+			indicator.style.height = '4px';
+			indicator.style.backgroundColor = specialTagInfo.color;
+			indicator.style.borderRadius = '50%';
+			indicator.style.border = '0.5px solid rgba(255,255,255,0.8)';
+			indicator.style.zIndex = '15';
+			indicator.style.pointerEvents = 'none'; // Don't interfere with click events
+		}
+
 		const dateDisplay = day.date.toLocaleDateString(this.settings.dateFormat, {
 			day: '2-digit',
 			month: 'short',
@@ -522,6 +582,11 @@ export class TaskHeatmapRenderer {
 			tooltipText += ` - Note exists (no tasks)`;
 		} else {
 			tooltipText += ` - No note for this date`;
+		}
+
+		// Add special tag info to tooltip
+		if (specialTagInfo) {
+			tooltipText += ` | Special: #${specialTagInfo.name}`;
 		}
 		
 		cell.setAttribute('aria-label', tooltipText);
@@ -661,7 +726,7 @@ export class TaskHeatmapRenderer {
 	}
 
 	private renderTaskDetails(container: HTMLElement, day: TaskDayData) {
-		container.empty();
+		(container as any).empty();
 		
 		const dateDisplay = day.date.toLocaleDateString(this.settings.dateFormat, {
 			weekday: 'long',
@@ -954,6 +1019,7 @@ export class TaskHeatmapRenderer {
 			return this.settings.emptyColor;
 		}
 		
+		// Keep normal color scheme - special tags only show as corner indicator
 		const colors = this.settings.colorScheme === 'custom' 
 			? this.settings.customColors 
 			: COLOR_SCHEMES[this.settings.colorScheme];
@@ -997,18 +1063,18 @@ export class TaskHeatmapRenderer {
 			const searchQuery = `tag:#${tag}`;
 			
 			// Try to find existing search leaf first
-			const searchLeaf = this.plugin.app.workspace.getLeavesOfType('search')[0];
+			const searchLeaf = (this.plugin as any).app.workspace.getLeavesOfType('search')[0];
 			
 			if (searchLeaf) {
 				// If search pane exists, use it and set the query
 				const searchView = searchLeaf.view as any;
 				if (searchView && typeof searchView.setQuery === 'function') {
 					searchView.setQuery(searchQuery);
-					this.plugin.app.workspace.revealLeaf(searchLeaf);
+					(this.plugin as any).app.workspace.revealLeaf(searchLeaf);
 				}
 			} else {
 				// If no search pane exists, create a new one
-				const leaf = this.plugin.app.workspace.getLeaf('tab');
+				const leaf = (this.plugin as any).app.workspace.getLeaf('tab');
 				leaf.setViewState({
 					type: 'search',
 					state: {
@@ -1018,13 +1084,13 @@ export class TaskHeatmapRenderer {
 			}
 			
 			// Show a notice to confirm the action
-			(this.plugin.app as any).notice?.(`Searching for tag: #${tag}`) || 
-			new (this.plugin.app as any).Notice(`Searching for tag: #${tag}`);
+			((this.plugin as any).app as any).notice?.(`Searching for tag: #${tag}`) || 
+			new ((this.plugin as any).app as any).Notice(`Searching for tag: #${tag}`);
 			
 		} catch (error) {
 			console.error('Error opening tag in search:', error);
 			// Fallback: show notice with search query
-			new (this.plugin.app as any).Notice(`Search manually for: tag:#${tag}`);
+			new ((this.plugin as any).app as any).Notice(`Search manually for: tag:#${tag}`);
 		}
 	}
 
@@ -1033,8 +1099,8 @@ export class TaskHeatmapRenderer {
 	 */
 	private async openDailyNote(day: TaskDayData) {
 		try {
-			const vault = this.plugin.app.vault;
-			const workspace = this.plugin.app.workspace;
+			const vault = (this.plugin as any).app.vault;
+			const workspace = (this.plugin as any).app.workspace;
 			
 			// Generate dynamic path using the configured pattern and date format
 			const pattern = sanitizePathPattern(this.settings.dailyNoteFormat);
@@ -1103,7 +1169,7 @@ export class TaskHeatmapRenderer {
 	 * Ensure directory exists, create if necessary
 	 */
 	private async ensureDirectoryExists(dirPath: string) {
-		const vault = this.plugin.app.vault;
+		const vault = (this.plugin as any).app.vault;
 		
 		// Split path into parts
 		const parts = dirPath.split('/').filter(part => part.length > 0);
@@ -1133,7 +1199,7 @@ export class TaskHeatmapRenderer {
 	 */
 	private async loadTemplate(templatePath: string, date: Date): Promise<string> {
 		try {
-			const vault = this.plugin.app.vault;
+			const vault = (this.plugin as any).app.vault;
 			const templateFile = vault.getAbstractFileByPath(templatePath);
 			
 			if (!templateFile) {
@@ -1155,6 +1221,61 @@ export class TaskHeatmapRenderer {
 			console.error(`❌ Error loading template: ${templatePath}`, error);
 			return processTemplate(getDefaultTemplate(), date, this.settings.dateFormat);
 		}
+	}
+
+	/**
+	 * Check if a day contains special tags and return the most prominent one
+	 */
+	private getSpecialTagForDay(day: TaskDayData): SpecialTag | null {
+		// Check all tags from tasks and standalone tags in the day
+		const allDayTags = new Set<string>();
+		
+		// Collect tags from tasks
+		day.taskDetails.forEach(task => {
+			task.tags.forEach(tag => allDayTags.add(tag));
+		});
+		
+		// Collect all tags from entire file content (including standalone hashtags)
+		day.allTags.forEach(tag => allDayTags.add(tag));
+		
+		// Debug output
+		if (allDayTags.size > 0) {
+			console.log(`🔍 Day ${day.dateStr} has tags:`, Array.from(allDayTags));
+			console.log(`🔧 Available special tags:`, this.settings.specialTags.map(st => `${st.name}(enabled:${st.enabled})`));
+		}
+		
+		// Find the first special tag that matches (prioritize by order in settings)
+		for (const specialTag of this.settings.specialTags) {
+			if (specialTag.enabled && allDayTags.has(specialTag.name)) {
+				console.log(`✅ Found matching special tag: ${specialTag.name}`);
+				return specialTag;
+			}
+		}
+		
+		return null;
+	}
+
+	/**
+	 * Lighten a hex color by a given percentage
+	 */
+	private lightenColor(hex: string, percent: number): string {
+		// Remove # if present
+		const color = hex.replace('#', '');
+		
+		// Convert to RGB
+		const r = parseInt(color.substr(0, 2), 16);
+		const g = parseInt(color.substr(2, 2), 16);
+		const b = parseInt(color.substr(4, 2), 16);
+		
+		// Lighten each component towards white
+		const lightenedR = Math.min(255, Math.floor(r + (255 - r) * (percent / 100)));
+		const lightenedG = Math.min(255, Math.floor(g + (255 - g) * (percent / 100)));
+		const lightenedB = Math.min(255, Math.floor(b + (255 - b) * (percent / 100)));
+		
+		// Convert back to hex
+		const toHex = (n: number) => n.toString(16).padStart(2, '0');
+		
+		return `#${toHex(lightenedR)}${toHex(lightenedG)}${toHex(lightenedB)}`;
 	}
 
 	/**

@@ -302,63 +302,156 @@ export class HeatmapSettingTab extends PluginSettingTab {
 		// Render special tags list
 		this.renderSpecialTagsList(containerEl);
 
-		// Add new special tag section
+		// Add new special tag section with improved UI
 		const addTagDiv = containerEl.createDiv();
 		addTagDiv.style.marginBottom = '20px';
 		addTagDiv.style.padding = '15px';
-		addTagDiv.style.border = '1px solid var(--background-modifier-border)';
-		addTagDiv.style.borderRadius = '5px';
+		addTagDiv.style.border = '2px solid var(--interactive-accent)';
+		addTagDiv.style.borderRadius = '8px';
+		addTagDiv.style.backgroundColor = 'var(--background-secondary)';
 		
-		addTagDiv.createEl('h4', { text: 'Neuen speziellen Tag hinzufügen' });
+		const addHeader = addTagDiv.createEl('h4', { text: '➕ Neuen speziellen Tag hinzufügen' });
+		addHeader.style.margin = '0 0 15px 0';
+		addHeader.style.color = 'var(--interactive-accent)';
 		
-		let newTagName = '';
-		let newTagColor = '#ff6b6b';
+		// Create form container
+		const formContainer = addTagDiv.createDiv();
+		formContainer.style.display = 'grid';
+		formContainer.style.gridTemplateColumns = '1fr auto auto';
+		formContainer.style.gap = '10px';
+		formContainer.style.alignItems = 'center';
 		
-		const tagInputContainer = addTagDiv.createDiv();
-		tagInputContainer.style.display = 'flex';
-		tagInputContainer.style.gap = '10px';
-		tagInputContainer.style.alignItems = 'center';
-		tagInputContainer.style.marginBottom = '10px';
-		
-		// Tag name input
-		const nameInput = tagInputContainer.createEl('input');
+		// Tag name input with better styling
+		const nameInput = formContainer.createEl('input') as HTMLInputElement;
 		nameInput.type = 'text';
 		nameInput.placeholder = 'Tag Name (ohne #)';
-		nameInput.style.flex = '1';
-		nameInput.addEventListener('input', (e) => {
-			newTagName = (e.target as HTMLInputElement).value;
-		});
+		nameInput.style.padding = '8px 12px';
+		nameInput.style.border = '2px solid var(--background-modifier-border)';
+		nameInput.style.borderRadius = '6px';
+		nameInput.style.fontSize = '14px';
+		nameInput.style.backgroundColor = 'var(--background-primary)';
+		nameInput.style.color = 'var(--text-normal)';
 		
-		// Color input
-		const colorInput = tagInputContainer.createEl('input');
+		// Color input with better styling
+		const colorInput = formContainer.createEl('input') as HTMLInputElement;
 		colorInput.type = 'color';
-		colorInput.value = newTagColor;
-		colorInput.style.width = '50px';
-		colorInput.style.height = '30px';
-		colorInput.addEventListener('change', (e) => {
-			newTagColor = (e.target as HTMLInputElement).value;
+		colorInput.value = '#ff6b6b';
+		colorInput.style.width = '60px';
+		colorInput.style.height = '40px';
+		colorInput.style.border = '2px solid var(--background-modifier-border)';
+		colorInput.style.borderRadius = '6px';
+		colorInput.style.cursor = 'pointer';
+		
+		// Add button with better styling
+		const addButton = formContainer.createEl('button') as HTMLButtonElement;
+		addButton.textContent = 'Hinzufügen';
+		addButton.style.padding = '8px 16px';
+		addButton.style.backgroundColor = 'var(--interactive-accent)';
+		addButton.style.color = 'var(--text-on-accent)';
+		addButton.style.border = 'none';
+		addButton.style.borderRadius = '6px';
+		addButton.style.cursor = 'pointer';
+		addButton.style.fontSize = '14px';
+		addButton.style.fontWeight = '500';
+		addButton.style.transition = 'all 0.2s ease';
+		
+		// Button hover effects
+		addButton.addEventListener('mouseenter', () => {
+			addButton.style.transform = 'translateY(-1px)';
+			addButton.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
 		});
 		
-		// Add button
-		const addButton = tagInputContainer.createEl('button');
-		addButton.textContent = 'Hinzufügen';
-		addButton.addEventListener('click', async () => {
-			if (newTagName.trim()) {
-				// Check if tag already exists
-				const exists = this.plugin.settings.specialTags.some(tag => tag.name === newTagName.trim());
-				if (!exists) {
-					this.plugin.settings.specialTags.push({
-						name: newTagName.trim(),
-						color: newTagColor,
-						enabled: true
-					});
-					await this.plugin.saveSettings();
-					await this.plugin.refreshView();
-					this.display(); // Refresh the settings display
-				} else {
-					// Show error (simple alert for now)
-					alert('Ein Tag mit diesem Namen existiert bereits.');
-				}
+		addButton.addEventListener('mouseleave', () => {
+			addButton.style.transform = 'translateY(0)';
+			addButton.style.boxShadow = 'none';
+		});
+		
+		// Input focus effects
+		nameInput.addEventListener('focus', () => {
+			nameInput.style.borderColor = 'var(--interactive-accent)';
+			nameInput.style.boxShadow = '0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2)';
+		});
+		
+		nameInput.addEventListener('blur', () => {
+			nameInput.style.borderColor = 'var(--background-modifier-border)';
+			nameInput.style.boxShadow = 'none';
+		});
+		
+		// Add functionality
+		const addNewTag = async () => {
+			const tagName = nameInput.value.trim();
+			const tagColor = colorInput.value;
+			
+			if (!tagName) {
+				nameInput.style.borderColor = '#ff4444';
+				nameInput.focus();
+				return;
+			}
+			
+			// Check if tag already exists
+			const exists = this.plugin.settings.specialTags.some(tag => 
+				tag.name.toLowerCase() === tagName.toLowerCase()
+			);
+			
+			if (exists) {
+				nameInput.style.borderColor = '#ff4444';
+				nameInput.style.backgroundColor = 'rgba(255, 68, 68, 0.1)';
+				
+				// Show error message
+				const errorMsg = formContainer.createEl('div');
+				errorMsg.textContent = `⚠️ Tag "${tagName}" existiert bereits!`;
+				errorMsg.style.gridColumn = '1 / -1';
+				errorMsg.style.color = '#ff4444';
+				errorMsg.style.fontSize = '12px';
+				errorMsg.style.marginTop = '5px';
+				
+				// Remove error after 3 seconds
+				setTimeout(() => {
+					errorMsg.remove();
+					nameInput.style.borderColor = 'var(--background-modifier-border)';
+					nameInput.style.backgroundColor = 'var(--background-primary)';
+				}, 3000);
+				
+				return;
+			}
+			
+			// Add the new tag
+			this.plugin.settings.specialTags.push({
+				name: tagName,
+				color: tagColor,
+				enabled: true
+			});
+			
+			// Save and refresh
+			await this.plugin.saveSettings();
+			await this.plugin.refreshView();
+			
+			// Clear inputs
+			nameInput.value = '';
+			colorInput.value = '#ff6b6b';
+			
+			// Show success message
+			const successMsg = formContainer.createEl('div');
+			successMsg.textContent = `✅ Tag "${tagName}" erfolgreich hinzugefügt!`;
+			successMsg.style.gridColumn = '1 / -1';
+			successMsg.style.color = 'var(--text-success)';
+			successMsg.style.fontSize = '12px';
+			successMsg.style.marginTop = '5px';
+			
+			// Remove success message and refresh display
+			setTimeout(() => {
+				successMsg.remove();
+				this.display(); // Refresh the entire settings display
+			}, 2000);
+		};
+		
+		// Event listeners
+		addButton.addEventListener('click', addNewTag);
+		
+		// Enter key support
+		nameInput.addEventListener('keypress', (e) => {
+			if (e.key === 'Enter') {
+				addNewTag();
 			}
 		});
 
@@ -381,83 +474,191 @@ export class HeatmapSettingTab extends PluginSettingTab {
 	 * Render the list of special tags with edit/delete options
 	 */
 	private renderSpecialTagsList(containerEl: HTMLElement) {
+		// Create header for existing tags
+		const tagsHeader = containerEl.createEl('h4');
+		tagsHeader.textContent = '🏷️ Vorhandene spezielle Tags';
+		tagsHeader.style.margin = '0 0 15px 0';
+		tagsHeader.style.color = 'var(--text-normal)';
+		
 		const specialTagsContainer = containerEl.createDiv();
-		specialTagsContainer.style.marginBottom = '15px';
+		specialTagsContainer.style.marginBottom = '20px';
+		specialTagsContainer.style.padding = '10px';
+		specialTagsContainer.style.backgroundColor = 'var(--background-primary)';
+		specialTagsContainer.style.border = '1px solid var(--background-modifier-border)';
+		specialTagsContainer.style.borderRadius = '6px';
 		
 		if (this.plugin.settings.specialTags.length === 0) {
 			const emptyMsg = specialTagsContainer.createDiv();
 			emptyMsg.style.color = 'var(--text-muted)';
 			emptyMsg.style.fontStyle = 'italic';
-			emptyMsg.textContent = 'Keine speziellen Tags definiert';
+			emptyMsg.style.textAlign = 'center';
+			emptyMsg.style.padding = '20px';
+			emptyMsg.innerHTML = `
+				<div style="font-size: 48px; margin-bottom: 10px;">📝</div>
+				<div>Keine speziellen Tags definiert</div>
+				<div style="font-size: 12px; margin-top: 5px;">Fügen Sie unten Ihren ersten Tag hinzu!</div>
+			`;
 			return;
 		}
 		
 		this.plugin.settings.specialTags.forEach((tag, index) => {
 			const tagItem = specialTagsContainer.createDiv();
-			tagItem.style.display = 'flex';
+			tagItem.style.display = 'grid';
+			tagItem.style.gridTemplateColumns = 'auto 1fr auto auto auto';
 			tagItem.style.alignItems = 'center';
-			tagItem.style.gap = '10px';
-			tagItem.style.padding = '8px';
-			tagItem.style.marginBottom = '5px';
-			tagItem.style.border = '1px solid var(--background-modifier-border)';
-			tagItem.style.borderRadius = '4px';
+			tagItem.style.gap = '12px';
+			tagItem.style.padding = '12px';
+			tagItem.style.marginBottom = '8px';
+			tagItem.style.border = '2px solid var(--background-modifier-border)';
+			tagItem.style.borderRadius = '8px';
+			tagItem.style.backgroundColor = 'var(--background-secondary)';
+			tagItem.style.transition = 'all 0.2s ease';
 			
-			// Color preview
+			// Hover effect
+			tagItem.addEventListener('mouseenter', () => {
+				tagItem.style.borderColor = 'var(--interactive-accent)';
+				tagItem.style.transform = 'translateY(-1px)';
+				tagItem.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+			});
+			
+			tagItem.addEventListener('mouseleave', () => {
+				tagItem.style.borderColor = 'var(--background-modifier-border)';
+				tagItem.style.transform = 'translateY(0)';
+				tagItem.style.boxShadow = 'none';
+			});
+			
+			// Color preview (larger and more prominent)
 			const colorPreview = tagItem.createDiv();
-			colorPreview.style.width = '20px';
-			colorPreview.style.height = '20px';
+			colorPreview.style.width = '32px';
+			colorPreview.style.height = '32px';
 			colorPreview.style.backgroundColor = tag.color;
-			colorPreview.style.borderRadius = '3px';
-			colorPreview.style.border = '1px solid var(--background-modifier-border)';
+			colorPreview.style.borderRadius = '50%';
+			colorPreview.style.border = '3px solid #ffffff';
+			colorPreview.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
 			
-			// Tag name
+			// Tag name (larger and bolder)
 			const tagName = tagItem.createEl('span');
 			tagName.textContent = `#${tag.name}`;
-			tagName.style.flex = '1';
-			tagName.style.fontFamily = 'monospace';
-			tagName.style.fontSize = '14px';
+			tagName.style.fontFamily = 'var(--font-monospace)';
+			tagName.style.fontSize = '16px';
+			tagName.style.fontWeight = '600';
+			tagName.style.color = tag.color;
+			
 			if (!tag.enabled) {
-				tagName.style.opacity = '0.5';
+				tagName.style.opacity = '0.4';
 				tagName.style.textDecoration = 'line-through';
 			}
 			
-			// Enable/Disable toggle
-			const enableToggle = tagItem.createEl('input');
+			// Enable/Disable toggle (styled)
+			const toggleContainer = tagItem.createDiv();
+			toggleContainer.style.display = 'flex';
+			toggleContainer.style.alignItems = 'center';
+			toggleContainer.style.gap = '5px';
+			
+			const toggleLabel = toggleContainer.createEl('span');
+			toggleLabel.textContent = tag.enabled ? 'Ein' : 'Aus';
+			toggleLabel.style.fontSize = '12px';
+			toggleLabel.style.color = tag.enabled ? 'var(--text-success)' : 'var(--text-muted)';
+			toggleLabel.style.fontWeight = '500';
+			
+			const enableToggle = toggleContainer.createEl('input') as HTMLInputElement;
 			enableToggle.type = 'checkbox';
 			enableToggle.checked = tag.enabled;
-			enableToggle.addEventListener('change', async (e) => {
-				this.plugin.settings.specialTags[index].enabled = (e.target as HTMLInputElement).checked;
+			enableToggle.style.transform = 'scale(1.2)';
+			enableToggle.style.accentColor = 'var(--interactive-accent)';
+			
+			enableToggle.addEventListener('change', async (e: Event) => {
+				const target = e.target as HTMLInputElement;
+				this.plugin.settings.specialTags[index].enabled = target.checked;
+				toggleLabel.textContent = target.checked ? 'Ein' : 'Aus';
+				toggleLabel.style.color = target.checked ? 'var(--text-success)' : 'var(--text-muted)';
+				tagName.style.opacity = target.checked ? '1' : '0.4';
+				tagName.style.textDecoration = target.checked ? 'none' : 'line-through';
+				
 				await this.plugin.saveSettings();
 				await this.plugin.refreshView();
-				this.display(); // Refresh the display
 			});
 			
-			// Color input for editing
-			const colorInput = tagItem.createEl('input');
+			// Color input for editing (better styled)
+			const colorInput = tagItem.createEl('input') as HTMLInputElement;
 			colorInput.type = 'color';
 			colorInput.value = tag.color;
-			colorInput.style.width = '30px';
-			colorInput.style.height = '25px';
-			colorInput.addEventListener('change', async (e) => {
-				this.plugin.settings.specialTags[index].color = (e.target as HTMLInputElement).value;
+			colorInput.style.width = '40px';
+			colorInput.style.height = '40px';
+			colorInput.style.border = '2px solid var(--background-modifier-border)';
+			colorInput.style.borderRadius = '6px';
+			colorInput.style.cursor = 'pointer';
+			
+			colorInput.addEventListener('change', async (e: Event) => {
+				const target = e.target as HTMLInputElement;
+				const newColor = target.value;
+				this.plugin.settings.specialTags[index].color = newColor;
+				
+				// Update preview immediately
+				colorPreview.style.backgroundColor = newColor;
+				tagName.style.color = newColor;
+				
 				await this.plugin.saveSettings();
 				await this.plugin.refreshView();
-				this.display(); // Refresh the display
 			});
 			
-			// Delete button
-			const deleteButton = tagItem.createEl('button');
+			// Delete button (better styled)
+			const deleteButton = tagItem.createEl('button') as HTMLButtonElement;
 			deleteButton.textContent = '🗑️';
-			deleteButton.style.background = 'none';
-			deleteButton.style.border = 'none';
+			deleteButton.style.width = '36px';
+			deleteButton.style.height = '36px';
+			deleteButton.style.backgroundColor = 'transparent';
+			deleteButton.style.border = '2px solid #ff4444';
+			deleteButton.style.borderRadius = '6px';
 			deleteButton.style.cursor = 'pointer';
-			deleteButton.style.fontSize = '14px';
+			deleteButton.style.fontSize = '16px';
+			deleteButton.style.transition = 'all 0.2s ease';
+			deleteButton.title = `Tag "#${tag.name}" löschen`;
+			
+			// Delete button hover effects
+			deleteButton.addEventListener('mouseenter', () => {
+				deleteButton.style.backgroundColor = '#ff4444';
+				deleteButton.style.transform = 'scale(1.1)';
+			});
+			
+			deleteButton.addEventListener('mouseleave', () => {
+				deleteButton.style.backgroundColor = 'transparent';
+				deleteButton.style.transform = 'scale(1)';
+			});
+			
 			deleteButton.addEventListener('click', async () => {
-				if (confirm(`Möchten Sie den Tag "#${tag.name}" wirklich löschen?`)) {
-					this.plugin.settings.specialTags.splice(index, 1);
-					await this.plugin.saveSettings();
-					await this.plugin.refreshView();
-					this.display(); // Refresh the display
+				// Better confirmation dialog
+				const tagDisplayName = `#${tag.name}`;
+				const shouldDelete = confirm(
+					`🗑️ Tag löschen\n\n` +
+					`Möchten Sie den speziellen Tag "${tagDisplayName}" wirklich löschen?\n\n` +
+					`Diese Aktion kann nicht rückgängig gemacht werden.`
+				);
+				
+				if (shouldDelete) {
+					// Show loading state
+					deleteButton.textContent = '⏳';
+					deleteButton.disabled = true;
+					
+					try {
+						this.plugin.settings.specialTags.splice(index, 1);
+						await this.plugin.saveSettings();
+						await this.plugin.refreshView();
+						
+						// Show success and refresh
+						setTimeout(() => {
+							this.display(); // Refresh the entire settings display
+						}, 100);
+						
+					} catch (error) {
+						console.error('Error deleting tag:', error);
+						deleteButton.textContent = '❌';
+						
+						setTimeout(() => {
+							deleteButton.textContent = '🗑️';
+							deleteButton.disabled = false;
+						}, 2000);
+					}
 				}
 			});
 		});

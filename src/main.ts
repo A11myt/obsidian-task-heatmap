@@ -46,7 +46,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 		});
 
 		// Add settings tab
-		this.addSettingTab(new HeatmapSettingTab(this.app, this));
+		this.addSettingTab(new HeatmapSettingTab((this as any).app, this));
 
 		// Register markdown code block processor for task heatmap
 		this.registerMarkdownCodeBlockProcessor('heatmap', async (source, el, ctx) => {
@@ -60,16 +60,26 @@ export default class HeatmapCalendarPlugin extends Plugin {
 
 		// Listen for file modifications with intelligent task detection
 		this.registerEvent(
-			this.app.vault.on('modify', async (file) => {
+			(this as any).app.vault.on('modify', async (file) => {
 				if (this.settings.autoRefresh && this.shouldMonitorFile(file.path)) {
 					await this.handleFileChange(file);
 				}
 			})
 		);
 
-		// Listen for editor changes to detect Enter key presses
+		// Listen for file saves to ensure we capture all changes
 		this.registerEvent(
-			this.app.workspace.on('editor-change', (editor, info) => {
+			(this as any).app.vault.on('create', async (file) => {
+				if (this.settings.autoRefresh && this.shouldMonitorFile(file.path)) {
+					console.log(`📄 New file created: ${file.path}`);
+					await this.handleFileChange(file);
+				}
+			})
+		);
+
+		// Listen for editor changes to detect real-time typing
+		this.registerEvent(
+			(this as any).app.workspace.on('editor-change', (editor, info) => {
 				if (this.settings.autoRefresh) {
 					this.handleEditorChange(editor, info);
 				}
@@ -78,7 +88,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 	}
 
 	async activateView() {
-		const { workspace } = this.app;
+		const { workspace } = (this as any).app;
 
 		let leaf: WorkspaceLeaf | null = null;
 		const leaves = workspace.getLeavesOfType(VIEW_TYPE_TASK_HEATMAP);
@@ -99,7 +109,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 		this.clearAllCaches();
 		
 		// Refresh the active heatmap view
-		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TASK_HEATMAP);
+		const leaves = (this as any).app.workspace.getLeavesOfType(VIEW_TYPE_TASK_HEATMAP);
 		for (const leaf of leaves) {
 			const view = leaf.view as TaskHeatmapView;
 			if (view && view.refresh) {
@@ -172,7 +182,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 	 */
 	private async checkForFileChanges() {
 		try {
-			const files = this.app.vault.getMarkdownFiles();
+			const files = (this as any).app.vault.getMarkdownFiles();
 			let hasTaskChanges = false;
 
 			// Check files that match our daily note pattern or are in notes folder
@@ -188,7 +198,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 						// First time seeing this file - check for tasks
 						this.lastModified.set(file.path, lastMod);
 						try {
-							const content = await this.app.vault.read(file);
+							const content = await (this as any).app.vault.read(file);
 							const taskContent = this.extractTaskContent(content);
 							if (taskContent) {
 								this.lastTaskContent.set(file.path, content);
@@ -201,7 +211,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 						// File was modified - check if tasks changed
 						this.lastModified.set(file.path, lastMod);
 						try {
-							const content = await this.app.vault.read(file);
+							const content = await (this as any).app.vault.read(file);
 							const previousContent = this.lastTaskContent.get(file.path);
 							const currentTasks = this.extractTaskContent(content);
 							const previousTasks = previousContent ? this.extractTaskContent(previousContent) : '';
@@ -258,7 +268,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 	private async handleFileChange(file: any) {
 		try {
 			// Read current content
-			const content = await this.app.vault.read(file);
+			const content = await (this as any).app.vault.read(file);
 			const previousContent = this.lastTaskContent.get(file.path);
 			
 			if (this.settings.smartRefresh) {
@@ -288,7 +298,7 @@ export default class HeatmapCalendarPlugin extends Plugin {
 	}
 
 	/**
-	 * Handle editor changes to detect Enter key and task completion
+	 * Handle editor changes to detect Enter key, task completion, and tag changes
 	 */
 	private handleEditorChange(editor: any, info: any) {
 		// Only use smart refresh if enabled
@@ -311,25 +321,50 @@ export default class HeatmapCalendarPlugin extends Plugin {
 		const isCurrentTaskLine = /^\s*[-*+]\s*\[[x ]\]/.test(currentLine);
 		const isPreviousTaskLine = /^\s*[-*+]\s*\[[x ]\]/.test(previousLine);
 		
+		// Check if current or previous line contains hashtags
+		const currentHasHashtag = /#\w+/.test(currentLine);
+		const previousHasHashtag = /#\w+/.test(previousLine);
+		
 		// Detect if user just completed a task (checkbox change)
 		const hasTaskChange = isCurrentTaskLine || isPreviousTaskLine;
+		
+		// Detect hashtag modifications (adding/removing tags)
+		const hasHashtagChange = currentHasHashtag || previousHasHashtag;
 		
 		// Detect if user pressed Enter after a task line (new line creation)
 		const likelyEnterAfterTask = currentLine.trim() === '' && isPreviousTaskLine;
 		
-		if (hasTaskChange || likelyEnterAfterTask) {
-			console.log('🔍 Smart refresh: Task interaction detected, scheduling refresh');
-			this.scheduleRefresh(300); // Moderate delay for editor changes
+		// Enhanced hashtag detection: check if user just typed a # character or completed a hashtag
+		const isTypingHashtag = currentLine.includes('#') && cursor.ch > 0 && 
+			editor.getRange({line: cursor.line, ch: cursor.ch - 1}, cursor).includes('#');
+		const completedHashtag = /#\w+\s/.test(currentLine); // hashtag followed by space
+		
+		if (hasTaskChange || likelyEnterAfterTask || hasHashtagChange || isTypingHashtag || completedHashtag) {
+			const changeType = hasTaskChange ? 'task' : 
+							  (hasHashtagChange || isTypingHashtag || completedHashtag) ? 'hashtag' : 'line';
+			console.log(`🔍 Smart refresh: ${changeType} interaction detected, scheduling refresh`);
+			// Use shorter delay for hashtag changes to make it feel more reactive
+			const delay = (hasHashtagChange || isTypingHashtag || completedHashtag) ? 1000 : 300;
+			this.scheduleRefresh(delay);
 		}
 	}
 
 	/**
-	 * Extract task-related content from file content
+	 * Extract task-related content and hashtags from file content
 	 */
 	private extractTaskContent(content: string): string {
 		const lines = content.split('\n');
+		
+		// Get all task lines
 		const taskLines = lines.filter(line => /^\s*[-*+]\s*\[[x ]\]/.test(line));
-		return taskLines.join('\n');
+		
+		// Get all lines containing hashtags (for special tag detection)
+		const hashtagLines = lines.filter(line => /#\w+/.test(line));
+		
+		// Combine both - this ensures we detect changes in both tasks and hashtags
+		const relevantLines = [...new Set([...taskLines, ...hashtagLines])];
+		
+		return relevantLines.sort().join('\n');
 	}
 
 	/**
