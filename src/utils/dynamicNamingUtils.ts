@@ -95,17 +95,18 @@ export function generateDateTokens(date: Date, locale: string = 'de-DE'): DateFo
  */
 export function formatDynamicPath(pattern: string, date: Date, locale: string = 'de-DE'): string {
 	const tokens = generateDateTokens(date, locale);
-	
-	let result = pattern;
-	
-	// Replace tokens in order of specificity (longest first)
-	const tokenOrder = ['YYYY', 'MMMM', 'MMM', 'dddd', 'ddd', 'MM', 'DD', 'YY', 'dd', 'M', 'D'];
-	
-	for (const token of tokenOrder) {
-		const regex = new RegExp(token, 'g');
-		result = result.replace(regex, tokens[token as keyof DateFormatTokens]);
-	}
-	
+
+	// Replace all tokens in a single pass using alternation to avoid
+	// already-replaced values being processed again (this caused e.g.
+	// the single-letter tokens D/M to replace letters inside month names
+	// like "Dec" -> "2ec").
+	const tokenKeys = Object.keys(tokens).sort((a, b) => b.length - a.length);
+	const tokenRegex = new RegExp(`(${tokenKeys.join('|')})`, 'g');
+
+	const result = pattern.replace(tokenRegex, (match) => {
+		return tokens[match as keyof DateFormatTokens] ?? match;
+	});
+
 	return result;
 }
 

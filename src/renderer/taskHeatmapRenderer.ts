@@ -277,8 +277,8 @@ export class TaskHeatmapRenderer {
 	 */
 	private extractHashtags(text: string): string[] {
 		const hashtagRegex = /#([a-zA-Z0-9_-]+)/g;
-		const matches = [];
-		let match;
+		const matches: string[] = [];
+		let match: RegExpExecArray | null;
 		
 		while ((match = hashtagRegex.exec(text)) !== null) {
 			matches.push(match[1]);
@@ -412,10 +412,17 @@ export class TaskHeatmapRenderer {
 		// Iterate through all days and place them in the correct row
 		const currentDate = new Date(startDate);
 		
+		// Track dates we've rendered to avoid duplicates
+		const rendered = new Set<string>();
 		while (currentDate <= endDate) {
 			const dayOfWeek = (currentDate.getDay() + 6) % 7; // Mo=0, Di=1, ..., So=6
 			const dateStr = currentDate.toISOString().split('T')[0];
 			let dayData = taskData.get(dateStr);
+			// Skip if we've already rendered this date (defensive guard)
+			if (rendered.has(dateStr)) {
+				currentDate.setDate(currentDate.getDate() + 1);
+				continue;
+			}
 			
 			if (!dayData) {
 				dayData = {
@@ -432,6 +439,7 @@ export class TaskHeatmapRenderer {
 
 			// Add cell to the appropriate weekday row
 			this.renderDayCell(rows[dayOfWeek], dayData);
+			rendered.add(dateStr);
 			
 			currentDate.setDate(currentDate.getDate() + 1);
 		}
@@ -559,11 +567,12 @@ export class TaskHeatmapRenderer {
 			indicator.style.position = 'absolute';
 			indicator.style.top = '1px';
 			indicator.style.right = '1px';
-			indicator.style.width = '4px';
-			indicator.style.height = '4px';
+			// Larger and more visible indicator
+			indicator.style.width = '10px';
+			indicator.style.height = '10px';
 			indicator.style.backgroundColor = specialTagInfo.color;
 			indicator.style.borderRadius = '50%';
-			indicator.style.border = '0.5px solid rgba(255,255,255,0.8)';
+			indicator.style.border = '1px solid rgba(255,255,255,0.95)';
 			indicator.style.zIndex = '15';
 			indicator.style.pointerEvents = 'none'; // Don't interfere with click events
 		}
@@ -881,7 +890,7 @@ export class TaskHeatmapRenderer {
 				// Simple task text display
 				taskText.textContent = task.text;
 
-				// Show tags under task text if any exist
+				// Show tags under task text if any exist (but only those allowed by settings or 'urlaub')
 				if (task.tags.length > 0) {
 					const tagsContainer = taskItem.createEl('div');
 					tagsContainer.style.display = 'flex';
@@ -889,26 +898,24 @@ export class TaskHeatmapRenderer {
 					tagsContainer.style.gap = '4px';
 					tagsContainer.style.marginTop = '6px';
 					tagsContainer.style.marginLeft = '26px'; // Align with task text
-
 					task.tags.forEach(tag => {
+						// Only show tags that are allowed by settings or 'urlaub'
+						const tagLower = tag.toLowerCase();
+						const allowed = this.settings.specialTags.some(st => st.name.toLowerCase() === tagLower && st.enabled) || tagLower === 'urlaub';
+						if (!allowed) return;
 						const tagSpan = tagsContainer.createEl('span');
 						tagSpan.textContent = `#${tag}`;
-						
-						// Check if this is a special tag with custom color
-						const specialTag = this.settings.specialTags.find(st => st.name === tag && st.enabled);
-						
+						// Check if this is a configured special tag with custom color
+						const specialTag = this.settings.specialTags.find(st => st.name.toLowerCase() === tagLower && st.enabled);
 						if (specialTag) {
-							// Use custom color for special tags
 							tagSpan.style.background = specialTag.color;
 							tagSpan.style.color = this.getContrastColor(specialTag.color);
 							tagSpan.style.border = `1px solid ${this.darkenColor(specialTag.color, 20)}`;
 							tagSpan.style.fontWeight = '600'; // Make special tags bolder
 						} else {
-							// Default styling for regular tags
 							tagSpan.style.background = 'var(--interactive-accent)';
 							tagSpan.style.color = 'var(--text-on-accent)';
 						}
-						
 						tagSpan.style.padding = '2px 6px';
 						tagSpan.style.borderRadius = '8px';
 						tagSpan.style.fontSize = '10px';
@@ -974,29 +981,39 @@ export class TaskHeatmapRenderer {
 			const sortedTags = Array.from(dayTags).sort();
 			
 			sortedTags.forEach(tag => {
+				const tagLower = tag.toLowerCase();
+				const allowed = this.settings.specialTags.some(st => st.name.toLowerCase() === tagLower && st.enabled) || tagLower === 'urlaub';
+				if (!allowed) return; // Skip tags not configured (except 'urlaub')
 				const tagElement = tagsContainer.createEl('span');
 				tagElement.textContent = `#${tag}`;
-				tagElement.style.background = 'var(--interactive-accent)';
-				tagElement.style.color = 'var(--text-on-accent)';
+				// Style if special tag
+				const specialTag = this.settings.specialTags.find(st => st.name.toLowerCase() === tagLower && st.enabled);
+				if (specialTag) {
+					tagElement.style.background = specialTag.color;
+					tagElement.style.color = this.getContrastColor(specialTag.color);
+					tagElement.style.border = `1px solid ${this.darkenColor(specialTag.color, 20)}`;
+					tagElement.style.fontWeight = '600';
+				} else {
+					tagElement.style.background = 'var(--interactive-accent)';
+					tagElement.style.color = 'var(--text-on-accent)';
+				}
 				tagElement.style.padding = '2px 6px';
 				tagElement.style.borderRadius = '8px';
 				tagElement.style.fontSize = '10px';  // Same as task tags - small
 				tagElement.style.fontWeight = '500'; // Same as task tags - not bold
 				tagElement.style.cursor = 'pointer';
 				tagElement.style.transition = 'all 0.2s ease';
-
-				// Hover effect
+				// Hover
 				tagElement.addEventListener('mouseenter', () => {
 					tagElement.style.transform = 'scale(1.05)';
 					tagElement.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
 				});
-
+				// Leave
 				tagElement.addEventListener('mouseleave', () => {
 					tagElement.style.transform = 'scale(1)';
 					tagElement.style.boxShadow = 'none';
 				});
-
-				// Click to open in search
+				// Click
 				tagElement.addEventListener('click', () => {
 					this.openTagInSearch(tag);
 				});

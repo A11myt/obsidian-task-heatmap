@@ -295,7 +295,7 @@ export class HeatmapSettingTab extends PluginSettingTab {
 		specialTagsInfo.style.backgroundColor = 'var(--background-secondary)';
 		specialTagsInfo.style.borderRadius = '5px';
 		specialTagsInfo.innerHTML = `
-			<strong>🏷️ Spezielle Tags mit benutzerdefinierten Farben</strong><br>
+			<strong>Spezielle Tags mit benutzerdefinierten Farben</strong><br>
 			<small>Definieren Sie Tags wie #urlaub mit eigenen Farben für bessere Sichtbarkeit in den Tasks</small>
 		`;
 
